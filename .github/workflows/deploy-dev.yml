@@ -1,0 +1,38 @@
+name: Deploy (development)
+
+# Deploys main to the development Firebase project. Configure in
+# Settings → Secrets and variables → Actions:
+#   variable FIREBASE_DEV_PROJECT_ID     e.g. calleva-gear-dev
+#   variables VITE_FIREBASE_*            web app config (see web/.env.example)
+#   secret   FIREBASE_SERVICE_ACCOUNT_DEV  JSON key for a deploy service account
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency: deploy-dev
+
+jobs:
+  deploy:
+    if: vars.FIREBASE_DEV_PROJECT_ID != ''
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_DEV_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ vars.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}
+      - run: npx firebase deploy --project ${{ vars.FIREBASE_DEV_PROJECT_ID }} --non-interactive --force

@@ -1,0 +1,28 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isActive() {
+      let user = firestore.get(/databases/(default)/documents/users/$(request.auth.uid));
+      return request.auth != null
+        && user != null
+        && user.data.active == true
+        && (user.data.expiresAt == null || user.data.expiresAt > request.time);
+    }
+
+    // photos/{photoId}/full.jpg and photos/{photoId}/thumb.jpg. The matching
+    // /photos/{photoId} Firestore doc is written first and names the uploader.
+    match /photos/{photoId}/{file} {
+      allow read: if isActive();
+      allow create: if isActive()
+        && file in ['full.jpg', 'thumb.jpg']
+        && request.resource.size < 15 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*')
+        && firestore.get(/databases/(default)/documents/photos/$(photoId)).data.uploadedBy == request.auth.uid;
+      allow delete: if isActive()
+        && (!firestore.exists(/databases/(default)/documents/photos/$(photoId))
+            || firestore.get(/databases/(default)/documents/photos/$(photoId)).data.uploadedBy == request.auth.uid
+            || firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['admin', 'manager']);
+    }
+  }
+}

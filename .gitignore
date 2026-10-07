@@ -1,0 +1,12 @@
+node_modules/
+dist/
+functions/lib/
+.emulator-data/
+*.log
+.env
+.env.*
+!.env.example
+.firebase/
+test-results/
+playwright-report/
+coverage/

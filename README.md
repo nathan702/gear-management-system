@@ -1,0 +1,126 @@
+# Calleva Gear
+
+Tracks Calleva's outdoor gear: what we own, where it is, how it's used, when it
+was inspected and what's being repaired. It's a web app that installs on phones
+from the browser, so staff can scan a gear label's QR code in the field — even
+with no signal.
+
+## Status
+
+| Phase | Scope | State |
+|---|---|---|
+| 1. Foundation | Sign-in & roles, reference data, products, gear, QR codes & labels, photos, import/export, offline | **Built** |
+| 2. Inspections | Form builder, inspections, failure outcomes, time/usage schedules | Next |
+| 3. Work orders | Auto-generated (one open per gear from inspections) + manual, assignment rules | |
+| 4. Kits, lists, check-outs | Date-conflict checks, build kits from lists, days-used logging | |
+| 5. Notifications | Per-user email/Slack preferences, admin channel routing, reminders | |
+| 6. Reporting | Usage, inspection completion, inventory, age, replacement budget forecast | |
+
+## Stack
+
+- **Web app** — React + TypeScript (Vite), Tailwind, installable PWA. Hosted on **Firebase Hosting**.
+- **Database** — **Firestore** with persistent offline cache: gear can be looked up, edited and photographed offline; changes sync on reconnect.
+- **Sign-in** — Firebase Auth: Google (calleva.org accounts join automatically as staff) and emailed sign-in links for invited personal addresses.
+- **Photos** — Cloud Storage. Resized on the phone and queued in IndexedDB, so they work offline.
+- **Server logic** — Cloud Functions (account activation, status history, audit log, account expiry, photo cleanup).
+- **Security** — Firestore and Storage rules enforce roles, QR-code uniqueness and status-change reasons.
+
+```
+shared/      Types, constants, seed data and pure logic (lifecycle maths, QR codes, import/export) — used by web and functions
+web/         The React app
+functions/   Cloud Functions (bundled with esbuild, including shared/)
+scripts/     seed.ts — starter reference data (+ demo data for the emulator)
+tests/       Security-rule and Cloud Function tests (run against the emulators)
+e2e/         Playwright browser tests (run against the emulators)
+```
+
+## Data model (Firestore collections)
+
+| Collection | Notes |
+|---|---|
+| `users/{uid}` | name, email, role (`admin`/`manager`/`staff`/`technician`), active, `expiresAt`, phone, home program area. Created only by the `activateAccount` function. |
+| `invites/{email}` | Pending invitations for non-calleva.org emails (role, optional access end date). |
+| `programAreas`, `locations`, `categories`, `manufacturers` | Name, description, active. Locations can sit inside another location. |
+| `products` | Manufacturer + model + variant (Model is merged into Product), category, lifetime (years), replacement cost, standards, PPE flag, document links; inspection schedules arrive in phase 2. |
+| `gear` | name, product, program area, location, status, QR code, serial, tags, mfg/purchase/first-use dates, purchase value, supplier, custom end of life, notes, links, retired date/reason. |
+| `gear/{id}/statusHistory` | Every status change with reason, source and who — written by a Cloud Function. |
+| `qrCodes/{code}` | Reverse index `{ gearId }` that keeps codes unique; lookups work offline. |
+| `photos` | Linked to gear (and later inspections / work orders). `uploaded` flips true once the image reaches Storage. |
+| `settings/app` | Org name, auto-join domains, QR link base URL, label template and printer offsets. |
+| `auditLog` | Who changed which fields of which record, when. |
+
+**Gear statuses:** Active · Has issues (usable, needs repair) · Quarantined (do not use) · Retired (permanent).
+Any status change requires a reason, which is recorded in the history.
+
+## Roles
+
+| | Admin | Manager | Staff | Technician |
+|---|:-:|:-:|:-:|:-:|
+| View gear, products, scan, add photos | ✓ | ✓ | ✓ | ✓ |
+| Add/edit gear & products, change status, reference data, import/export | ✓ | ✓ | | |
+| Users, invitations, settings, delete records | ✓ | | | |
+
+Kits, inspections and work-order permissions arrive with their phases.
+
+## Local development
+
+Requires Node 22 and Java 21 (for the Firebase emulators).
+
+```bash
+npm install
+npm run emulators                 # terminal 1 — Auth, Firestore, Storage, Functions + UI at http://localhost:4000
+npm run build -w functions        # once, and after changing functions/ (or: npm run watch -w functions)
+
+# terminal 2 — load reference + demo data into the emulator
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 npm run seed -- --demo
+
+cp web/.env.example web/.env.local   # VITE_USE_EMULATORS=true
+npm run dev                          # http://localhost:5173
+```
+
+With the emulators, the sign-in page shows a **demo user** picker (admin@, manager@, staff@, tech@calleva.org).
+Emulator data is saved to `.emulator-data/` on exit.
+
+### Tests
+
+```bash
+npm run typecheck
+npm test                 # unit tests (shared logic: lifecycle, QR codes, import planning)
+npm run test:emulator    # security rules + Cloud Functions, in throwaway emulators
+npm run test:e2e         # browser tests; needs `npm run emulators` running (resets emulator data)
+```
+
+CI runs all of these on every pull request (`.github/workflows/ci.yml`).
+
+## Setting up the development Firebase project
+
+1. In the [Firebase console](https://console.firebase.google.com) create a project (e.g. `calleva-gear-dev`) and upgrade it to the **Blaze** plan (needed for Cloud Functions; expected cost is a few dollars a month at most).
+2. **Firestore** → create database in **nam5 (United States)**, production mode.
+3. **Storage** → get started (same region).
+4. **Authentication** → Sign-in method → enable **Google** and **Email/Password → Email link (passwordless sign-in)**. Add the hosting domain under *Authorized domains* if you use a custom domain.
+5. **Project settings → Your apps** → add a Web app; copy its config into GitHub repository variables (below) or `web/.env.local` for a local build.
+6. Create a deploy service account (IAM → Service accounts) with the *Firebase Admin* role (plus *Service Account User* and *Cloud Functions Admin*), download a JSON key, and save it as the GitHub secret `FIREBASE_SERVICE_ACCOUNT_DEV`.
+7. GitHub → Settings → Secrets and variables → Actions → **Variables**: `FIREBASE_DEV_PROJECT_ID`, `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`.
+
+Every push to `main` then deploys hosting, functions, rules and indexes (`.github/workflows/deploy-dev.yml`).
+Load the starter reference data once:
+
+```bash
+GOOGLE_APPLICATION_CREDENTIALS=key.json GCLOUD_PROJECT=calleva-gear-dev npm run seed
+```
+
+**First sign-in:** the first person to sign in with a calleva.org Google account becomes an **admin**; everyone after that joins as staff, and admins can change roles under *Users*.
+
+A separate production project (and a `production` branch/workflow) can be added later the same way.
+
+## QR labels
+
+- Each gear item gets a code like `CG-7KQ2MX` (no 0/O or 1/I/L). Labels encode `<site>/q/<code>`, so any phone camera opens the item — set the permanent address under **Settings → Label link address** before printing in bulk.
+- **Avery sheets:** select gear on the Gear page → *Print labels*. Templates: 22805 (1½″ square, weatherproof), 22806 (2″ square), 22807 (2″ round), 5160 (address). Print at 100%. Use *Draw label outlines* on plain paper to check alignment and adjust the printer offsets in Settings.
+- **Pre-printed durable tags:** scan a tag that isn't attached yet and choose *Add gear with this tag* or *Attach to existing gear*. Tags may encode any URL or text; the last URL segment or the text itself is used as the code.
+
+## Import / export
+
+*Manage → Import / export* exports any list (or everything as one Excel workbook) and imports CSV or Excel files with a preview before anything is written.
+Rows with an `id` (from an export) update that record; others are matched by QR code (gear), manufacturer + model + variant (products), email (users) or name (everything else).
+Only columns present in the file change, and blank cells clear optional fields. New users become invitations.

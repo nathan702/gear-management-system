@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "default": "demo-gear",
+    "dev": "REPLACE-WITH-DEV-PROJECT-ID"
+  }
+}
