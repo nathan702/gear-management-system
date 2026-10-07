@@ -7,6 +7,7 @@ import {
   GEAR_STATUSES,
   STATUS_LABELS,
   calculatedStatus,
+  inspectionStatusAfter,
   missingAnswers,
   resultForNumber,
   todayIso,
@@ -199,7 +200,8 @@ function InspectionRun({ gearId, formId }: { gearId: string; formId: string }) {
     }
   }
 
-  const finalStatus = overriding ? overrideStatus : calculated;
+  const result = overriding ? overrideStatus : calculated;
+  const finalStatus = inspectionStatusAfter(g.status, result);
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 pb-8">
@@ -332,15 +334,15 @@ function InspectionRun({ gearId, formId }: { gearId: string; formId: string }) {
 
           <div className="rounded-lg bg-stone-50 p-4">
             <p className="text-sm">
-              {failed.length ? `${failed.length} item${failed.length === 1 ? '' : 's'} failed` : 'No failures'} → gear status{' '}
+              {failed.length ? `${failed.length} item${failed.length === 1 ? '' : 's'} failed` : 'No failures'} → result{' '}
               <StatusBadge status={calculated} />
             </p>
             <div className="mt-3">
-              <Checkbox label="Override the status" checked={overriding} onChange={(e) => setOverriding(e.target.checked)} />
+              <Checkbox label="Override the result" checked={overriding} onChange={(e) => setOverriding(e.target.checked)} />
             </div>
             {overriding && (
               <div className="mt-3 grid gap-3 sm:grid-cols-[12rem_1fr]">
-                <Field label="Set status to">
+                <Field label="Result instead">
                   <Select value={overrideStatus} onChange={(e) => setOverrideStatus(e.target.value as GearStatus)}>
                     {GEAR_STATUSES.filter((s) => s !== 'retired').map((s) => (
                       <option key={s} value={s}>
@@ -350,15 +352,20 @@ function InspectionRun({ gearId, formId }: { gearId: string; formId: string }) {
                   </Select>
                 </Field>
                 <Field label="Reason (required)">
-                  <Input value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} placeholder="Why the calculated status is wrong" />
+                  <Input value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} placeholder="Why the calculated result is wrong" />
                 </Field>
               </div>
+            )}
+            {g.status !== 'active' && g.status !== 'retired' && finalStatus === g.status && (
+              <p className="mt-3 text-xs text-stone-600">
+                This gear is already {STATUS_LABELS[g.status].toLowerCase()}. An inspection can only make its status worse — closing its work order returns it to Active.
+              </p>
             )}
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-3">
             <span className="text-sm text-stone-600">
-              Saves as <StatusBadge status={finalStatus} />
+              Gear will be <StatusBadge status={finalStatus} />
             </span>
             <Button variant="primary" onClick={submit} disabled={busy}>
               Submit inspection

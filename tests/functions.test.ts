@@ -148,30 +148,31 @@ describe('applyInspection', () => {
     expect(g.inspectionState.f1).toEqual({ lastDate: '2026-09-01', lastInspectionId: 'i1', failedCount: 2, daysUsedAtLast: 33 });
   });
 
-  it('uses the override and restores Active on a clean pass', async () => {
+  it('uses the override, and a clean pass never clears a problem', async () => {
     await inspect('i1', { responses: [resp('fail', 'quarantined')], override: { status: 'has_issues', reason: 'Field patched' } });
     await processed('i1');
     expect((await gearData()).status).toBe('has_issues');
 
     await inspect('i2', { date: '2026-09-15', responses: [resp('pass', 'quarantined'), resp('fail', 'note')] });
-    expect(await processed('i2')).toMatchObject({ statusApplied: 'active', calculatedStatus: 'active' });
-    expect((await gearData()).status).toBe('active');
+    expect(await processed('i2')).toMatchObject({ calculatedStatus: 'active', statusBefore: 'has_issues', statusApplied: 'has_issues' });
+    expect((await gearData()).status).toBe('has_issues');
+    expect((await gearData()).inspectionState.f1.lastInspectionId).toBe('i2');
   });
 
-  it('ignores an older inspection that syncs late', async () => {
+  it('still applies a problem found by an older inspection that syncs late', async () => {
     await inspect('i1', { date: '2026-09-15', responses: [resp('pass', 'quarantined')] });
     await processed('i1');
     await inspect('i0', { date: '2026-08-01', responses: [resp('fail', 'quarantined')] });
-    expect(await processed('i0')).toMatchObject({ statusApplied: null });
+    expect(await processed('i0')).toMatchObject({ statusApplied: 'quarantined' });
     const g = await gearData();
-    expect(g.status).toBe('active');
+    expect(g.status).toBe('quarantined');
     expect(g.inspectionState.f1.lastInspectionId).toBe('i1');
   });
 
   it('leaves retired gear retired', async () => {
     await getFirestore(admin).doc('gear/g1').update({ status: 'retired' });
     await inspect('i1', { responses: [resp('fail', 'quarantined')] });
-    expect(await processed('i1')).toMatchObject({ statusApplied: null, statusBefore: 'retired' });
+    expect(await processed('i1')).toMatchObject({ statusApplied: 'retired', statusBefore: 'retired' });
     expect((await gearData()).status).toBe('retired');
   });
 });

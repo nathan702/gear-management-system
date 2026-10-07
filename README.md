@@ -58,7 +58,7 @@ Any status change requires a reason, which is recorded in the history.
 ### Inspections
 
 - Products list the forms their gear needs and how often: every N months and/or every N days used — whichever comes first — plus how many days ahead it shows as *due soon* (default 14). Never-inspected gear counts from its first-use date (else purchase date, else when it was added).
-- Anyone can inspect, including offline. Submitting writes the inspection; the `applyInspection` Cloud Function then sets the gear to the **worst failure outcome** among failed items (*Note only* failures leave it Active; a clean pass returns it to Active), or to the inspector's **override** (which needs a reason). An older inspection that syncs late never overwrites a newer one. Retired gear isn't changed.
+- Anyone can inspect, including offline. Submitting writes the inspection; the `applyInspection` Cloud Function then works out the result — the **worst failure outcome** among failed items (*Note only* failures count as Active), or the inspector's **override** (which needs a reason) — and applies it only if it is **worse** than the gear's current status. Inspections never clear a problem: only closing a work order returns gear to Active (phase 3). Retired gear isn't changed. A late-syncing older inspection still applies any problem it found but doesn't replace the newer inspection as the latest.
 - *Inspections → Due* lists overdue and due-soon gear, filterable to *Assigned to me*. Reminders are sent in phase 5.
 - Starter forms are built from the Gear Register's checklists (*Inspection forms → Add starter forms*, or `npm run seed`).
 

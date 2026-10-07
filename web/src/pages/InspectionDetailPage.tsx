@@ -76,14 +76,17 @@ export function InspectionDetailPage() {
                   ) : (
                     <span key="a">
                       Stayed <StatusBadge status={insp.statusApplied} />
+                      {insp.statusApplied !== 'active' && insp.statusApplied !== 'retired' && (
+                        <span className="block text-xs text-stone-500">Inspections never clear a problem — closing the work order returns gear to Active.</span>
+                      )}
                     </span>
                   )
                 ) : (
-                  'Not changed (a newer inspection with this form was already recorded, or the gear is retired)'
+                  'Gear no longer exists'
                 )
               ) : (
                 <span key="p" className="text-sky-800">
-                  Will be set to {STATUS_LABELS[insp.override?.status ?? insp.calculatedStatus]} once this syncs
+                  Applied once this syncs (result: {STATUS_LABELS[insp.override?.status ?? insp.calculatedStatus]})
                 </span>
               ),
             ],

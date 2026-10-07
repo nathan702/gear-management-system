@@ -48,6 +48,16 @@ export function calculatedStatus(responses: Pick<InspectionResponse, 'result' | 
   return worst;
 }
 
+/**
+ * The gear status after an inspection: an inspection can only make things
+ * worse (closing a work order is what returns gear to Active), and retired
+ * gear stays retired.
+ */
+export function inspectionStatusAfter(current: GearStatus, result: GearStatus): GearStatus {
+  if (current === 'retired') return current;
+  return STATUS_SEVERITY[result] > STATUS_SEVERITY[current] ? result : current;
+}
+
 /** Items still needing an answer before the inspection can be submitted. */
 export function missingAnswers(form: Pick<InspectionForm, 'items'>, responses: Pick<InspectionResponse, 'itemId' | 'result' | 'value'>[]) {
   const byId = new Map(responses.map((r) => [r.itemId, r]));

@@ -58,8 +58,8 @@ test('override needs a reason', async ({ page }) => {
   await page.getByRole('button', { name: /PFD inspection/ }).click();
   await page.getByRole('button', { name: 'Pass all unanswered checks' }).click();
   await page.locator('li', { hasText: 'Foam intact' }).getByRole('button', { name: 'Fail' }).click();
-  await page.getByLabel('Override the status').check();
-  await page.getByLabel('Set status to').selectOption('has_issues');
+  await page.getByLabel('Override the result').check();
+  await page.getByLabel('Result instead').selectOption('has_issues');
   await page.getByRole('button', { name: 'Submit inspection' }).click();
   await expect(page.getByText('Give a reason for overriding the status.')).toBeVisible();
   await page.getByLabel('Reason (required)').fill('Minor compression, OK for flatwater');

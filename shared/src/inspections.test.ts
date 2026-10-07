@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   calculatedStatus,
   gearInspectionSummary,
+  inspectionStatusAfter,
   missingAnswers,
   resultForNumber,
   responsibleInspectors,
@@ -29,6 +30,16 @@ describe('calculatedStatus', () => {
         { result: 'na', failureOutcome: 'quarantined' },
       ]),
     ).toBe('quarantined');
+  });
+});
+
+describe('inspectionStatusAfter', () => {
+  it('only ever makes the status worse', () => {
+    expect(inspectionStatusAfter('active', 'has_issues')).toBe('has_issues');
+    expect(inspectionStatusAfter('has_issues', 'quarantined')).toBe('quarantined');
+    expect(inspectionStatusAfter('quarantined', 'active')).toBe('quarantined');
+    expect(inspectionStatusAfter('has_issues', 'active')).toBe('has_issues');
+    expect(inspectionStatusAfter('retired', 'quarantined')).toBe('retired');
   });
 });
 

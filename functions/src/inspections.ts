@@ -1,6 +1,6 @@
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
-import { STATUS_LABELS, calculatedStatus, type Gear, type GearStatus, type Inspection } from '@gear/shared';
+import { STATUS_LABELS, calculatedStatus, inspectionStatusAfter, type Gear, type GearStatus, type Inspection } from '@gear/shared';
 
 function reasonFor(insp: Inspection, target: GearStatus): string {
   if (insp.override) return `Inspection override (${insp.formName}): ${insp.override.reason}`;
@@ -11,10 +11,11 @@ function reasonFor(insp: Inspection, target: GearStatus): string {
 
 /**
  * Applies a submitted inspection (which may have been made offline and synced
- * later): records it as the gear's latest inspection for that form and sets
- * the gear's status to the override, or the worst failure outcome. An
- * inspection older than one already recorded for the same form doesn't
- * change anything. Retired gear keeps its status.
+ * later). Inspections can only make a gear's status worse: the result (the
+ * worst failure outcome, or the inspector's override) is applied when it is
+ * more severe than the current status. Returning gear to Active is done by
+ * closing its work order. Retired gear is left alone. The inspection is
+ * recorded as the latest for its form unless a newer one already is.
  */
 export const applyInspection = onDocumentCreated('inspections/{inspectionId}', async (event) => {
   const db = getFirestore();
@@ -41,28 +42,25 @@ export const applyInspection = onDocumentCreated('inspections/{inspectionId}', a
     const isLatest = !previous || previous.lastDate <= insp.date;
 
     const gearUpdate: Record<string, unknown> = {};
-    let applied: GearStatus | null = null;
-    if (isLatest) {
+    if (isLatest)
       gearUpdate[`inspectionState.${insp.formId}`] = {
         lastDate: insp.date,
         lastInspectionId: inspRef.id,
         failedCount,
         daysUsedAtLast: gear.stats?.daysUsed ?? 0,
       };
-      if (gear.status !== 'retired') {
-        applied = target;
-        if (target !== gear.status)
-          Object.assign(gearUpdate, {
-            status: target,
-            statusReason: reasonFor(insp, target),
-            statusSource: 'inspection',
-            statusChangedAt: now,
-            updatedAt: now,
-            updatedBy: insp.inspectorId,
-          });
-      }
-      tx.update(gearRef, gearUpdate);
-    }
-    tx.update(inspRef, { calculatedStatus: calculated, failedCount, statusBefore: gear.status, statusApplied: applied, processedAt: now });
+    // A problem found by an older inspection that synced late still counts.
+    const after: GearStatus = inspectionStatusAfter(gear.status, target);
+    if (after !== gear.status)
+      Object.assign(gearUpdate, {
+        status: after,
+        statusReason: reasonFor(insp, after),
+        statusSource: 'inspection',
+        statusChangedAt: now,
+        updatedAt: now,
+        updatedBy: insp.inspectorId,
+      });
+    if (Object.keys(gearUpdate).length) tx.update(gearRef, gearUpdate);
+    tx.update(inspRef, { calculatedStatus: calculated, failedCount, statusBefore: gear.status, statusApplied: after, processedAt: now });
   });
 });
