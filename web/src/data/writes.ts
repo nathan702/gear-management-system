@@ -10,6 +10,9 @@ import {
   generateQrCode,
   type Gear,
   type GearStatus,
+  type Inspection,
+  type InspectionAssignment,
+  type InspectionForm,
   type Product,
   type StatusChangeSource,
 } from '@gear/shared';
@@ -148,4 +151,35 @@ export async function deleteGear(id: string, qrCode: string) {
   batch.delete(doc(db, 'gear', id));
   batch.delete(doc(db, 'qrCodes', qrCode));
   await commit(batch, 'Delete');
+}
+
+/* ------------------------------------------------------------ inspections */
+
+export async function saveInspectionForm(
+  uid: string,
+  id: string | null,
+  before: InspectionForm | undefined,
+  data: Pick<InspectionForm, 'name' | 'description' | 'items' | 'active'>,
+): Promise<string> {
+  const ref = id ? doc(db, 'inspectionForms', id) : doc(collection(db, 'inspectionForms'));
+  const batch = writeBatch(db);
+  if (id && before) batch.update(ref, clean({ ...data, version: before.version + 1, ...updateStamp(uid) }));
+  else batch.set(ref, clean({ ...data, version: 1, ...createStamp(uid) }));
+  await commit(batch, 'Form');
+  return ref.id;
+}
+
+/** Inspections are written once (offline is fine); a function applies the result. */
+export async function submitInspection(uid: string, id: string, data: Omit<Inspection, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>) {
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'inspections', id), clean({ ...data, ...createStamp(uid) }));
+  await commit(batch, 'Inspection');
+}
+
+export async function saveAssignment(uid: string, existing: (InspectionAssignment & { id: string }) | undefined, data: Pick<InspectionAssignment, 'scope' | 'refId' | 'userIds'>) {
+  const batch = writeBatch(db);
+  if (existing && !data.userIds.length) batch.delete(doc(db, 'inspectionAssignments', existing.id));
+  else if (existing) batch.update(doc(db, 'inspectionAssignments', existing.id), { userIds: data.userIds, ...updateStamp(uid) });
+  else if (data.userIds.length) batch.set(doc(collection(db, 'inspectionAssignments')), { ...data, ...createStamp(uid) });
+  await commit(batch, 'Assignment');
 }

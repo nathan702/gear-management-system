@@ -10,8 +10,8 @@ with no signal.
 | Phase | Scope | State |
 |---|---|---|
 | 1. Foundation | Sign-in & roles, reference data, products, gear, QR codes & labels, photos, import/export, offline | **Built** |
-| 2. Inspections | Form builder, inspections, failure outcomes, time/usage schedules | Next |
-| 3. Work orders | Auto-generated (one open per gear from inspections) + manual, assignment rules | |
+| 2. Inspections | Form builder, inspections (offline), failure outcomes, overrides, time/usage schedules, who-inspects-what | **Built** |
+| 3. Work orders | Auto-generated (one open per gear from inspections) + manual, assignment rules | Next |
 | 4. Kits, lists, check-outs | Date-conflict checks, build kits from lists, days-used logging | |
 | 5. Notifications | Per-user email/Slack preferences, admin channel routing, reminders | |
 | 6. Reporting | Usage, inspection completion, inventory, age, replacement budget forecast | |
@@ -42,25 +42,35 @@ e2e/         Playwright browser tests (run against the emulators)
 | `invites/{email}` | Pending invitations for non-calleva.org emails (role, optional access end date). |
 | `programAreas`, `locations`, `categories`, `manufacturers` | Name, description, active. Locations can sit inside another location. |
 | `products` | Manufacturer + model + variant (Model is merged into Product), category, lifetime (years), replacement cost, standards, PPE flag, document links; inspection schedules arrive in phase 2. |
-| `gear` | name, product, program area, location, status, QR code, serial, tags, mfg/purchase/first-use dates, purchase value, supplier, custom end of life, notes, links, retired date/reason. |
+| `gear` | name, product, program area, location, status, QR code, serial, tags, mfg/purchase/first-use dates, purchase value, supplier, custom end of life, notes, links, retired date/reason. Server-maintained: `inspectionState` (latest inspection per form) and `stats` (days used). |
 | `gear/{id}/statusHistory` | Every status change with reason, source and who — written by a Cloud Function. |
 | `qrCodes/{code}` | Reverse index `{ gearId }` that keeps codes unique; lookups work offline. |
-| `photos` | Linked to gear (and later inspections / work orders). `uploaded` flips true once the image reaches Storage. |
+| `photos` | Linked to gear, and optionally an inspection (and item) or, later, a work order. `uploaded` flips true once the image reaches Storage. |
+| `inspectionForms` | Name, version (bumped on every save), items: prompt, help, type (pass/fail, number with OK range, text), **failure outcome** (*Note only* / *Has issues* / *Quarantine*), required. |
+| `inspections` | Gear, form + version, date, inspector, every answer with the item's wording copied in, notes, calculated status, optional override + reason. Permanent once written. |
+| `inspectionAssignments` | Who inspects gear by product, category, location or program area (most specific wins). |
 | `settings/app` | Org name, auto-join domains, QR link base URL, label template and printer offsets. |
 | `auditLog` | Who changed which fields of which record, when. |
 
 **Gear statuses:** Active · Has issues (usable, needs repair) · Quarantined (do not use) · Retired (permanent).
 Any status change requires a reason, which is recorded in the history.
 
+### Inspections
+
+- Products list the forms their gear needs and how often: every N months and/or every N days used — whichever comes first — plus how many days ahead it shows as *due soon* (default 14). Never-inspected gear counts from its first-use date (else purchase date, else when it was added).
+- Anyone can inspect, including offline. Submitting writes the inspection; the `applyInspection` Cloud Function then sets the gear to the **worst failure outcome** among failed items (*Note only* failures leave it Active; a clean pass returns it to Active), or to the inspector's **override** (which needs a reason). An older inspection that syncs late never overwrites a newer one. Retired gear isn't changed.
+- *Inspections → Due* lists overdue and due-soon gear, filterable to *Assigned to me*. Reminders are sent in phase 5.
+- Starter forms are built from the Gear Register's checklists (*Inspection forms → Add starter forms*, or `npm run seed`).
+
 ## Roles
 
 | | Admin | Manager | Staff | Technician |
 |---|:-:|:-:|:-:|:-:|
-| View gear, products, scan, add photos | ✓ | ✓ | ✓ | ✓ |
-| Add/edit gear & products, change status, reference data, import/export | ✓ | ✓ | | |
+| View gear, products, scan, add photos, inspect (incl. override with reason) | ✓ | ✓ | ✓ | ✓ |
+| Add/edit gear & products, change status, reference data, inspection forms & assignments, import/export | ✓ | ✓ | | |
 | Users, invitations, settings, delete records | ✓ | | | |
 
-Kits, inspections and work-order permissions arrive with their phases.
+Kits and work-order permissions arrive with their phases. Admins can delete inspection records (the gear's status isn't rolled back).
 
 ## Local development
 
@@ -124,3 +134,5 @@ A separate production project (and a `production` branch/workflow) can be added 
 *Manage → Import / export* exports any list (or everything as one Excel workbook) and imports CSV or Excel files with a preview before anything is written.
 Rows with an `id` (from an export) update that record; others are matched by QR code (gear), manufacturer + model + variant (products), email (users) or name (everything else).
 Only columns present in the file change, and blank cells clear optional fields. New users become invitations.
+
+Inspection forms import/export one row per item (`form`, `prompt`, `type`, `failure_outcome`, `required`, `min`, `max`, `unit`, `help`); importing a form with an existing name saves a new version of it. The full inspection log exports to CSV or Excel, and both are included in the *Everything* workbook.

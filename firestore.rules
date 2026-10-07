@@ -168,7 +168,7 @@ service cloud.firestore {
         && validGear(request.resource.data) && ownsQr(id, request.resource.data)
         && validStatusChange()
         // fields maintained by Cloud Functions
-        && !changed().hasAny(['openInspectionWorkOrderId', 'stats']);
+        && !changed().hasAny(['openInspectionWorkOrderId', 'stats', 'inspectionState']);
       allow delete: if isAdmin();
 
       match /statusHistory/{entry} {
@@ -188,6 +188,62 @@ service cloud.firestore {
         && (!existsAfter(gearPath(resource.data.gearId))
             || getAfter(gearPath(resource.data.gearId)).data.qrCode != code);
       allow update: if false;
+    }
+
+    // ------------------------------------------------------------ inspections
+
+    function validForm(d) {
+      return d.name is string && d.name.size() > 0 && d.name.size() <= 120
+        && d.active is bool
+        && d.version is int && d.version > 0
+        && d.items is list && d.items.size() <= 150;
+    }
+
+    match /inspectionForms/{id} {
+      allow read: if isActive();
+      allow create: if isManager() && stampedCreate() && validForm(request.resource.data)
+        && request.resource.data.version == 1;
+      // Every save bumps the version that inspections record.
+      allow update: if isManager() && stampedUpdate() && validForm(request.resource.data)
+        && request.resource.data.version == resource.data.version + 1;
+      allow delete: if isAdmin();
+    }
+
+    match /inspectionAssignments/{id} {
+      allow read: if isActive();
+      allow create: if isManager() && stampedCreate()
+        && request.resource.data.scope in ['product', 'category', 'location', 'programArea']
+        && request.resource.data.refId is string
+        && request.resource.data.userIds is list && request.resource.data.userIds.size() <= 50;
+      allow update: if isManager() && stampedUpdate()
+        && request.resource.data.scope == resource.data.scope
+        && request.resource.data.refId == resource.data.refId
+        && request.resource.data.userIds is list && request.resource.data.userIds.size() <= 50;
+      allow delete: if isManager();
+    }
+
+    function validOverride(d) {
+      return !('override' in d) || d.override == null
+        || (d.override.status in ['active', 'has_issues', 'quarantined']
+            && d.override.reason is string && d.override.reason.size() > 0);
+    }
+
+    // Any active user can inspect. Results are permanent; the applyInspection
+    // function fills in the outcome fields.
+    match /inspections/{id} {
+      allow read: if isActive();
+      allow create: if isActive() && stampedCreate()
+        && request.resource.data.inspectorId == request.auth.uid
+        && exists(gearPath(request.resource.data.gearId))
+        && request.resource.data.formId is string
+        && request.resource.data.date is string
+        && request.resource.data.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && request.resource.data.responses is list
+        && request.resource.data.responses.size() <= 150
+        && validOverride(request.resource.data)
+        && !request.resource.data.keys().hasAny(['processedAt', 'statusApplied', 'statusBefore']);
+      allow update: if false;
+      allow delete: if isAdmin();
     }
 
     // ----------------------------------------------------------------- photos

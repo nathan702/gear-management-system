@@ -187,3 +187,68 @@ describe('photos', () => {
     await assertFails(updateDoc(doc(as('staff2'), 'photos', 'ph1'), { caption: 'x', ...stampUpdate('staff2') }));
   });
 });
+
+describe('inspections', () => {
+  const form = (uid: string, version = 1) => ({ name: 'Raft check', active: true, version, items: [], ...stampCreate(uid) });
+  const inspection = (uid: string, extra: Record<string, unknown> = {}) => ({
+    gearId: 'existing',
+    productId: null,
+    formId: 'f1',
+    formName: 'Raft check',
+    formVersion: 1,
+    date: '2026-10-01',
+    inspectorId: uid,
+    responses: [{ itemId: 'a', result: 'fail', failureOutcome: 'quarantined' }],
+    failedCount: 1,
+    calculatedStatus: 'quarantined',
+    override: null,
+    ...stampCreate(uid),
+    ...extra,
+  });
+
+  it('lets managers manage forms and requires version bumps', async () => {
+    const db = as('manager');
+    await assertSucceeds(setDoc(doc(db, 'inspectionForms', 'f1'), form('manager')));
+    await assertFails(setDoc(doc(as('staff'), 'inspectionForms', 'f2'), form('staff')));
+    await assertFails(setDoc(doc(db, 'inspectionForms', 'f3'), form('manager', 5)));
+    await assertFails(updateDoc(doc(db, 'inspectionForms', 'f1'), { name: 'Renamed', ...stampUpdate('manager') }));
+    await assertSucceeds(updateDoc(doc(db, 'inspectionForms', 'f1'), { name: 'Renamed', version: 2, ...stampUpdate('manager') }));
+  });
+
+  it('lets any active user record an inspection as themselves', async () => {
+    await assertSucceeds(setDoc(doc(as('staff'), 'inspections', 'i1'), inspection('staff')));
+    await assertFails(setDoc(doc(as('staff'), 'inspections', 'i2'), inspection('manager')));
+    await assertFails(setDoc(doc(as('expired'), 'inspections', 'i3'), inspection('expired')));
+    await assertFails(setDoc(doc(as('staff'), 'inspections', 'i4'), inspection('staff', { gearId: 'missing' })));
+    await assertFails(setDoc(doc(as('staff'), 'inspections', 'i5'), inspection('staff', { date: 'yesterday' })));
+  });
+
+  it('requires a reason to override and keeps outcome fields for the server', async () => {
+    const db = as('staff');
+    await assertFails(setDoc(doc(db, 'inspections', 'i1'), inspection('staff', { override: { status: 'active', reason: '' } })));
+    await assertFails(setDoc(doc(db, 'inspections', 'i2'), inspection('staff', { override: { status: 'retired', reason: 'x' } })));
+    await assertSucceeds(setDoc(doc(db, 'inspections', 'i3'), inspection('staff', { override: { status: 'active', reason: 'Patched on site' } })));
+    await assertFails(setDoc(doc(db, 'inspections', 'i4'), inspection('staff', { statusApplied: 'active' })));
+  });
+
+  it('makes inspections permanent except for admin deletion', async () => {
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'inspections', 'i1'), inspection('staff')));
+    await assertFails(updateDoc(doc(as('staff'), 'inspections', 'i1'), { notes: 'edit' }));
+    await assertFails(updateDoc(doc(as('admin'), 'inspections', 'i1'), { notes: 'edit' }));
+    const mgr = as('manager');
+    await assertFails(writeBatch(mgr).delete(doc(mgr, 'inspections', 'i1')).commit());
+    const adm = as('admin');
+    await assertSucceeds(writeBatch(adm).delete(doc(adm, 'inspections', 'i1')).commit());
+  });
+
+  it('keeps inspection state on gear server-only', async () => {
+    await assertFails(updateDoc(doc(as('admin'), 'gear', 'existing'), { 'inspectionState.f1': { lastDate: '2026-01-01' }, ...stampUpdate('admin') }));
+  });
+
+  it('lets managers assign inspectors', async () => {
+    const a = (uid: string) => ({ scope: 'location', refId: 'l1', userIds: ['staff'], ...stampCreate(uid) });
+    await assertSucceeds(setDoc(doc(as('manager'), 'inspectionAssignments', 'a1'), a('manager')));
+    await assertFails(setDoc(doc(as('staff'), 'inspectionAssignments', 'a2'), a('staff')));
+    await assertFails(setDoc(doc(as('manager'), 'inspectionAssignments', 'a3'), { ...a('manager'), scope: 'planet' }));
+  });
+});

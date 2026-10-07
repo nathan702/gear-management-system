@@ -5,6 +5,8 @@ import { useMe } from '../auth/AuthProvider';
 import { byName, useData } from '../data/DataProvider';
 import { Card, Empty, LinkButton, StatusBadge } from '../components/ui';
 import { fmtMoney, fmtTimestamp, plural } from '../lib/format';
+import { useInspectionSummaries } from '../inspections/common';
+import { responsibleInspectors } from '@gear/shared';
 
 const TILE: Record<GearStatus, string> = {
   active: 'border-brand-200 bg-brand-50 text-brand-900',
@@ -14,8 +16,16 @@ const TILE: Record<GearStatus, string> = {
 };
 
 export function HomePage() {
-  const { profile, isManager } = useMe();
-  const { gear, programAreas } = useData();
+  const { profile, uid, isManager } = useMe();
+  const { gear, programAreas, products, inspectionAssignments } = useData();
+  const summaries = useInspectionSummaries();
+  const dueCount = (state: 'overdue' | 'due_soon', mineOnly = false) =>
+    [...gear.values()].filter(
+      (g) =>
+        summaries.get(g.id)?.state === state &&
+        (!mineOnly || responsibleInspectors(g, g.productId ? products.get(g.productId) : null, inspectionAssignments)?.userIds.includes(uid)),
+    ).length;
+  const mineDue = dueCount('overdue', true) + dueCount('due_soon', true);
   const all = [...gear.values()];
   const counts = Object.fromEntries(GEAR_STATUSES.map((s) => [s, all.filter((g) => g.status === s).length])) as Record<GearStatus, number>;
   const inService = all.filter((g) => g.status !== 'retired');
@@ -56,6 +66,24 @@ export function HomePage() {
             <div className="text-xs opacity-75">{STATUS_DESCRIPTIONS[s]}</div>
           </Link>
         ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Link to="/inspections?state=overdue" className="rounded-xl border border-red-200 bg-white p-4 transition hover:shadow-sm">
+          <div className="text-3xl font-semibold text-red-800 tabular-nums">{dueCount('overdue')}</div>
+          <div className="text-sm font-medium">Inspections overdue</div>
+        </Link>
+        <Link to="/inspections?state=due_soon" className="rounded-xl border border-amber-200 bg-white p-4 transition hover:shadow-sm">
+          <div className="text-3xl font-semibold text-amber-800 tabular-nums">{dueCount('due_soon')}</div>
+          <div className="text-sm font-medium">Inspections due soon</div>
+        </Link>
+        <Link to="/inspections?mine=1" className="col-span-2 flex items-center justify-between rounded-xl border border-stone-200 bg-white p-4 transition hover:shadow-sm">
+          <span>
+            <span className="block text-sm font-medium">Assigned to you</span>
+            <span className="block text-xs text-stone-600">Overdue or due soon on gear you look after</span>
+          </span>
+          <span className="text-3xl font-semibold tabular-nums">{mineDue}</span>
+        </Link>
       </div>
 
       {all.length === 0 ? (

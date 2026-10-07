@@ -1,4 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
+import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import { db } from '../firebase';
+import { FORM_HEADERS, INSPECTION_LOG_HEADERS, formsToRows, inspectionLogRows, planFormImport, type FormImportPlan, type Inspection } from '@gear/shared';
+import { saveInspectionForm } from '../data/writes';
+import type { Data } from '../data/DataProvider';
 import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Upload } from 'lucide-react';
 import {
   ENTITIES,
@@ -28,6 +33,7 @@ export function ImportExportPage() {
       />
       <ExportCard keys={keys} />
       <ImportCard keys={keys} />
+      <InspectionsCard />
     </div>
   );
 }
@@ -44,7 +50,13 @@ function ExportCard({ keys }: { keys: EntityKey[] }) {
     <Card
       title="Export"
       actions={
-        <Button size="sm" onClick={() => downloadXlsx(keys.map(build), `gear-backup-${stamp()}.xlsx`)}>
+        <Button
+          size="sm"
+          onClick={async () => {
+            const extra = await inspectionSheets(data);
+            await downloadXlsx([...keys.map(build), ...extra], `gear-backup-${stamp()}.xlsx`);
+          }}
+        >
           <FileSpreadsheet size={14} /> Everything (Excel)
         </Button>
       }
@@ -286,6 +298,142 @@ function ImportCard({ keys }: { keys: EntityKey[] }) {
           <p className="flex items-center gap-2 text-sm text-brand-800">
             <CheckCircle2 size={16} /> {progress}
           </p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+async function inspectionLog(data: Data) {
+  const snap = await getDocs(query(collection(db, 'inspections'), orderBy('date', 'desc')));
+  const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Inspection) }));
+  return inspectionLogRows(list, {
+    gear: (id) => data.gear.get(id),
+    product: (id) => data.productLabel(id),
+    user: (id) => data.users.get(id)?.displayName ?? '',
+  });
+}
+
+async function inspectionSheets(data: Data) {
+  return [
+    { name: 'Inspection forms', headers: [...FORM_HEADERS], rows: formsToRows([...data.inspectionForms.values()]) },
+    { name: 'Inspection log', headers: [...INSPECTION_LOG_HEADERS], rows: await inspectionLog(data) },
+  ];
+}
+
+function InspectionsCard() {
+  const { uid } = useMe();
+  const data = useData();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [plan, setPlan] = useState<FormImportPlan | null>(null);
+  const [busy, setBusy] = useState(false);
+  const forms = [...data.inspectionForms.values()];
+  const formRows = () => formsToRows(forms);
+
+  return (
+    <Card title="Inspection forms & log">
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm">
+            <b>Inspection forms</b> <span className="text-stone-500">· {forms.length} (one row per item)</span>
+          </span>
+          <span className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => downloadCsv([...FORM_HEADERS], formRows(), `inspection-forms-${stamp()}.csv`)}>
+              <Download size={14} /> CSV
+            </Button>
+            <Button size="sm" onClick={() => downloadXlsx([{ name: 'Inspection forms', headers: [...FORM_HEADERS], rows: formRows() }], `inspection-forms-${stamp()}.xlsx`)}>
+              <Download size={14} /> Excel
+            </Button>
+            <Button size="sm" onClick={() => fileInput.current?.click()} disabled={busy}>
+              <Upload size={14} /> Import
+            </Button>
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm">
+            <b>Inspection log</b> <span className="text-stone-500">· every inspection, newest first</span>
+          </span>
+          <span className="flex gap-2">
+            <Button size="sm" onClick={async () => downloadCsv([...INSPECTION_LOG_HEADERS], await inspectionLog(data), `inspection-log-${stamp()}.csv`)}>
+              <Download size={14} /> CSV
+            </Button>
+            <Button
+              size="sm"
+              onClick={async () =>
+                downloadXlsx([{ name: 'Inspection log', headers: [...INSPECTION_LOG_HEADERS], rows: await inspectionLog(data) }], `inspection-log-${stamp()}.xlsx`)
+              }
+            >
+              <Download size={14} /> Excel
+            </Button>
+          </span>
+        </div>
+        <input
+          ref={fileInput}
+          type="file"
+          accept=".csv,.xlsx"
+          hidden
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (!file) return;
+            try {
+              setPlan(planFormImport(await readSpreadsheet(file), forms));
+            } catch (err) {
+              notify((err as Error).message, 'error');
+            }
+          }}
+        />
+        {plan && (
+          <div className="space-y-3 rounded-lg bg-stone-50 p-3 text-sm">
+            <p>
+              Columns: <code>form</code>, <code>prompt</code>, <code>type</code> (pass/fail, number, text), <code>failure_outcome</code> (note, has_issues,
+              quarantined), <code>required</code>, <code>min</code>, <code>max</code>, <code>unit</code>, <code>help</code>. A form with the same name as an existing
+              one replaces its items (as a new version).
+            </p>
+            <ul className="space-y-1">
+              {plan.forms.map((f) => (
+                <li key={f.name}>
+                  <b>{f.name}</b> — {plural(f.items.length, 'item')} · {f.id ? 'replaces existing form' : 'new form'}
+                  {f.errors.map((er) => (
+                    <div key={er} className="text-red-700">
+                      {er}
+                    </div>
+                  ))}
+                </li>
+              ))}
+            </ul>
+            <div className="flex gap-2">
+              <Button
+                variant="primary"
+                disabled={busy || !plan.forms.some((f) => !f.errors.length && f.items.length)}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    let n = 0;
+                    for (const f of plan.forms) {
+                      if (f.errors.length || !f.items.length) continue;
+                      await saveInspectionForm(uid, f.id ?? null, f.id ? data.inspectionForms.get(f.id) : undefined, {
+                        name: f.name,
+                        description: f.description,
+                        active: f.active,
+                        items: f.items,
+                      });
+                      n++;
+                    }
+                    notify(`${plural(n, 'form')} imported`, 'success');
+                    setPlan(null);
+                  } catch (err) {
+                    notify((err as Error).message, 'error');
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Import forms without errors
+              </Button>
+              <Button onClick={() => setPlan(null)}>Cancel</Button>
+            </div>
+          </div>
         )}
       </div>
     </Card>

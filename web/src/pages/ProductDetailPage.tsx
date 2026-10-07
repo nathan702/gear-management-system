@@ -12,7 +12,7 @@ export function ProductDetailPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const { isManager, isAdmin } = useMe();
-  const { products, categories, manufacturers, gear, locations, productLabel } = useData();
+  const { products, categories, manufacturers, gear, locations, inspectionForms, productLabel } = useData();
   const p = products.get(id);
   if (!p) return <PageHeader title="Product not found" back={{ to: '/products', label: 'Products' }} />;
 
@@ -72,6 +72,31 @@ export function ProductDetailPage() {
                   </li>
                 ))}
               </ul>
+            )}
+          </Card>
+          <Card title="Inspection schedule">
+            {p.inspectionSchedules?.length ? (
+              <ul className="space-y-1 text-sm">
+                {p.inspectionSchedules.map((s) => (
+                  <li key={s.formId}>
+                    <Link className="link" to={`/inspections/forms/${s.formId}`}>
+                      {inspectionForms.get(s.formId)?.name ?? 'Deleted form'}
+                    </Link>
+                    <span className="text-stone-600">
+                      {' — '}
+                      {[
+                        s.everyMonths ? `every ${s.everyMonths} month${s.everyMonths === 1 ? '' : 's'}` : null,
+                        s.everyDaysUsed ? `every ${s.everyDaysUsed} days used` : null,
+                        s.beforeEachCheckout ? 'before each check-out' : null,
+                      ]
+                        .filter(Boolean)
+                        .join(', or ')}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-stone-500">Not inspected on a schedule.</p>
             )}
           </Card>
           <Card title="Fleet">

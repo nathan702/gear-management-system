@@ -65,6 +65,7 @@ export function usePhotoQueueCount() {
 export interface PhotoLinks {
   gearId: string | null;
   inspectionId?: string | null;
+  inspectionItemId?: string | null;
   workOrderId?: string | null;
 }
 
@@ -79,6 +80,7 @@ export async function addPhotos(uid: string, files: FileList | File[], links: Ph
     const data: Omit<Photo, 'createdAt' | 'updatedAt'> & Record<string, unknown> = {
       gearId: links.gearId,
       inspectionId: links.inspectionId ?? null,
+      inspectionItemId: links.inspectionItemId ?? null,
       workOrderId: links.workOrderId ?? null,
       storagePath: `photos/${id}/full.jpg`,
       thumbPath: `photos/${id}/thumb.jpg`,

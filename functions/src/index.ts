@@ -10,4 +10,5 @@ setGlobalOptions({ region: 'us-central1', maxInstances: 10 });
 export { activateAccount, syncAuthDisabled, expireAccounts } from './accounts';
 export { gearStatusHistory } from './gear';
 export { deletePhotoFiles } from './photos';
+export { applyInspection } from './inspections';
 export * from './audit';

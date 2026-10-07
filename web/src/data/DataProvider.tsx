@@ -6,6 +6,8 @@ import {
   type AppSettings,
   type Category,
   type Gear,
+  type InspectionAssignment,
+  type InspectionForm,
   type Location,
   type Manufacturer,
   type Product,
@@ -29,6 +31,8 @@ export interface Data {
   products: Map<string, Product & WithId>;
   gear: Map<string, Gear & WithId>;
   users: Map<string, UserProfile & WithId>;
+  inspectionForms: Map<string, InspectionForm & WithId>;
+  inspectionAssignments: (InspectionAssignment & WithId)[];
   settings: AppSettings;
   productLabel(id: string | null | undefined): string;
   /** True while there are writes made offline that haven't reached the server. */
@@ -45,6 +49,8 @@ const COLLECTIONS = [
   'products',
   'gear',
   'users',
+  'inspectionForms',
+  'inspectionAssignments',
 ] as const;
 type CollectionKey = (typeof COLLECTIONS)[number];
 
@@ -86,6 +92,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       products,
       gear: get<Gear>('gear'),
       users: get<UserProfile>('users'),
+      inspectionForms: get<InspectionForm>('inspectionForms'),
+      inspectionAssignments: [...get<InspectionAssignment>('inspectionAssignments').values()],
       settings,
       productLabel: (id) => (id ? productName(products.get(id), manufacturers) || 'Unknown product' : ''),
       pendingWrites: Object.values(pending).some(Boolean),

@@ -14,7 +14,11 @@ import {
   SEED_CATEGORIES,
   SEED_LOCATIONS,
   SEED_PROGRAM_AREAS,
+  SEED_CHECKLISTS,
+  addMonths,
   generateQrCode,
+  starterForms,
+  todayIso,
   type GearStatus,
 } from '../shared/src/index';
 
@@ -66,10 +70,33 @@ async function main() {
   const program = await ensureNamed(db, 'programAreas', SEED_PROGRAM_AREAS);
   const location = await ensureNamed(db, 'locations', SEED_LOCATIONS);
   const category = await ensureNamed(db, 'categories', SEED_CATEGORIES);
-  if (demo) await seedDemo(program, location, category);
+  const forms = await ensureForms();
+  if (demo) await seedDemo(program, location, category, forms);
 }
 
-async function seedDemo(program: (n: string) => string, location: (n: string) => string, category: (n: string) => string) {
+/** Starter inspection forms from the Gear Register's checklists, if none exist. */
+async function ensureForms() {
+  const snap = await db.collection('inspectionForms').get();
+  const ids = new Map(snap.docs.map((d) => [String(d.get('name')), d.id]));
+  if (snap.empty) {
+    const batch = db.batch();
+    for (const f of starterForms(SEED_CHECKLISTS)) {
+      const ref = db.collection('inspectionForms').doc();
+      batch.set(ref, { ...f, ...stamp() });
+      ids.set(f.name, ref.id);
+    }
+    await batch.commit();
+    console.log(`inspectionForms: ${ids.size} starter forms added`);
+  } else console.log('inspectionForms: already present');
+  return (name: string) => ids.get(`${name} inspection`);
+}
+
+async function seedDemo(
+  program: (n: string) => string,
+  location: (n: string) => string,
+  category: (n: string) => string,
+  form: (n: string) => string | undefined,
+) {
   const auth = getAuth();
   const people = [
     { email: 'admin@calleva.org', displayName: 'Avery Admin', role: 'admin' },
@@ -99,10 +126,23 @@ async function seedDemo(program: (n: string) => string, location: (n: string) =>
     { key: 'kayak', manufacturerId: maker('Jackson Kayak'), model: 'Zen 3.0', variant: 'Medium', categoryId: category('Kayaks'), lifetimeYears: 12, replacementCost: 1450 },
     { key: 'bike', manufacturerId: maker('Trek'), model: 'Marlin 5', variant: 'M', categoryId: category('Bikes'), lifetimeYears: 8, replacementCost: 700 },
   ];
+  const scheduleFor: Record<string, [string, number, number | null]> = {
+    raft: ['Inflatable', 12, 60],
+    pfd: ['PFD', 12, null],
+    helmet: ['Helmet', 12, null],
+    harness: ['Textile', 12, null],
+    kayak: ['Hull', 12, null],
+    bike: ['Bike', 6, 40],
+  };
   const productIds: Record<string, string> = {};
+  const productForm: Record<string, string | undefined> = {};
   for (const { key, ...p } of products) {
     const ref = db.collection('products').doc();
-    await ref.set({ ...p, notes: '', links: [], inspectionSchedules: [], active: true, ...stamp() });
+    const [formName, months, days] = scheduleFor[key];
+    const formId = form(formName);
+    productForm[key] = formId;
+    const inspectionSchedules = formId ? [{ formId, everyMonths: months, everyDaysUsed: days, reminderLeadDays: 14, beforeEachCheckout: false }] : [];
+    await ref.set({ ...p, notes: '', links: [], inspectionSchedules, active: true, ...stamp() });
     productIds[key] = ref.id;
   }
 
@@ -123,7 +163,12 @@ async function seedDemo(program: (n: string) => string, location: (n: string) =>
       const ref = db.collection('gear').doc();
       const qrCode = generateQrCode();
       const status = statuses[(n + i) % statuses.length];
+      // Stagger last inspections 1–14 months ago so some are due or overdue.
+      const formId = productForm[pk];
+      const lastDate = addMonths(todayIso(), -(((n + i) * 5) % 14) - 1);
       batch.set(ref, {
+        inspectionState: formId ? { [formId]: { lastDate, lastInspectionId: 'seed', failedCount: 0, daysUsedAtLast: 0 } } : {},
+        stats: { daysUsed: ((n + i) * 7) % 50 },
         name: `${base} ${i}`,
         productId: productIds[pk],
         programAreaId: program(prog),

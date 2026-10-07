@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 import {
   Boxes,
+  ClipboardCheck,
   CloudOff,
   Home,
   LogOut,
@@ -56,6 +57,7 @@ export function Layout() {
     { to: '/', label: 'Home', icon: <Home size={18} />, end: true },
     { to: '/gear', label: 'Gear', icon: <Boxes size={18} /> },
     { to: '/scan', label: 'Scan', icon: <QrCode size={18} /> },
+    { to: '/inspections', label: 'Inspections', icon: <ClipboardCheck size={18} /> },
     { to: '/products', label: 'Products', icon: <Package size={18} /> },
   ];
   const manage: NavItem[] = [
