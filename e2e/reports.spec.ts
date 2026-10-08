@@ -37,14 +37,17 @@ test('managers get reports with filters, a replacement forecast and exports', as
   expect((await download).suggestedFilename()).toMatch(/^replacement-forecast-by-program-area-\d{4}-\d{2}-\d{2}\.csv$/);
 
   await page.getByRole('button', { name: 'Inspections', exact: true }).click();
+  await expect(page).toHaveURL(/\/reports\/inspections\?/);
   await expect(page.getByText('In-depth inspections current')).toBeVisible();
   await shot(page, 'reports-inspections');
 
   await page.getByRole('button', { name: 'Work orders', exact: true }).click();
+  await expect(page).toHaveURL(/\/reports\/work-orders\?/);
   await expect(page.getByText('Work orders opened per month')).toBeVisible();
   await shot(page, 'reports-workorders');
 
   await page.getByRole('button', { name: 'Usage', exact: true }).click();
+  await expect(page).toHaveURL(/\/reports\/usage\?/);
   await page.getByLabel('Date range').selectOption('30d');
   await expect(page.getByText('Items used', { exact: true }).first()).toBeVisible();
   await shot(page, 'reports-usage');
