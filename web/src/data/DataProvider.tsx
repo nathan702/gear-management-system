@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { collection, doc, onSnapshot } from 'firebase/firestore';
+import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import {
   DEFAULT_SETTINGS,
   productName,
@@ -14,6 +14,9 @@ import {
   type ProgramArea,
   type UserProfile,
   type WithId,
+  type WorkOrder,
+  type WorkOrderRule,
+  OPEN_WORK_ORDER_STATUSES,
 } from '@gear/shared';
 import { db } from '../firebase';
 
@@ -33,6 +36,9 @@ export interface Data {
   users: Map<string, UserProfile & WithId>;
   inspectionForms: Map<string, InspectionForm & WithId>;
   inspectionAssignments: (InspectionAssignment & WithId)[];
+  /** Open, in-progress and waiting work orders (closed ones are queried on demand). */
+  openWorkOrders: Map<string, WorkOrder & WithId>;
+  workOrderRules: (WorkOrderRule & WithId)[];
   settings: AppSettings;
   productLabel(id: string | null | undefined): string;
   /** True while there are writes made offline that haven't reached the server. */
@@ -51,6 +57,8 @@ const COLLECTIONS = [
   'users',
   'inspectionForms',
   'inspectionAssignments',
+  'workOrderRules',
+  'openWorkOrders',
 ] as const;
 type CollectionKey = (typeof COLLECTIONS)[number];
 
@@ -62,7 +70,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unsubs = COLLECTIONS.map((key) =>
       onSnapshot(
-        collection(db, key),
+        key === 'openWorkOrders'
+          ? query(collection(db, 'workOrders'), where('status', 'in', [...OPEN_WORK_ORDER_STATUSES]))
+          : collection(db, key),
         { includeMetadataChanges: true },
         (snap) => {
           setMaps((m) => ({ ...m, [key]: new Map(snap.docs.map((d) => [d.id, { id: d.id, ...d.data() }])) }));
@@ -94,6 +104,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       users: get<UserProfile>('users'),
       inspectionForms: get<InspectionForm>('inspectionForms'),
       inspectionAssignments: [...get<InspectionAssignment>('inspectionAssignments').values()],
+      openWorkOrders: get<WorkOrder>('openWorkOrders'),
+      workOrderRules: [...get<WorkOrderRule>('workOrderRules').values()].sort((a, b) => a.order - b.order),
       settings,
       productLabel: (id) => (id ? productName(products.get(id), manufacturers) || 'Unknown product' : ''),
       pendingWrites: Object.values(pending).some(Boolean),

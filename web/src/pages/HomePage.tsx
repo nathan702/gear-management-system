@@ -6,7 +6,7 @@ import { byName, useData } from '../data/DataProvider';
 import { Card, Empty, LinkButton, StatusBadge } from '../components/ui';
 import { fmtMoney, fmtTimestamp, plural } from '../lib/format';
 import { useInspectionSummaries } from '../inspections/common';
-import { responsibleInspectors } from '@gear/shared';
+import { isOverdue, responsibleInspectors, todayIso } from '@gear/shared';
 
 const TILE: Record<GearStatus, string> = {
   active: 'border-brand-200 bg-brand-50 text-brand-900',
@@ -17,7 +17,10 @@ const TILE: Record<GearStatus, string> = {
 
 export function HomePage() {
   const { profile, uid, isManager } = useMe();
-  const { gear, programAreas, products, inspectionAssignments } = useData();
+  const { gear, programAreas, products, inspectionAssignments, openWorkOrders } = useData();
+  const wos = [...openWorkOrders.values()];
+  const woOverdue = wos.filter((w) => isOverdue(w, todayIso())).length;
+  const woMine = wos.filter((w) => w.assigneeId === uid).length;
   const summaries = useInspectionSummaries();
   const dueCount = (state: 'overdue' | 'due_soon', mineOnly = false) =>
     [...gear.values()].filter(
@@ -83,6 +86,21 @@ export function HomePage() {
             <span className="block text-xs text-stone-600">Overdue or due soon on gear you look after</span>
           </span>
           <span className="text-3xl font-semibold tabular-nums">{mineDue}</span>
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        <Link to="/work-orders" className="rounded-xl border border-stone-200 bg-white p-4 transition hover:shadow-sm">
+          <div className="text-3xl font-semibold tabular-nums">{wos.length}</div>
+          <div className="text-sm font-medium">Open work orders</div>
+        </Link>
+        <Link to="/work-orders?view=overdue" className="rounded-xl border border-red-200 bg-white p-4 transition hover:shadow-sm">
+          <div className="text-3xl font-semibold text-red-800 tabular-nums">{woOverdue}</div>
+          <div className="text-sm font-medium">Repairs overdue</div>
+        </Link>
+        <Link to="/work-orders?view=mine" className="rounded-xl border border-stone-200 bg-white p-4 transition hover:shadow-sm">
+          <div className="text-3xl font-semibold tabular-nums">{woMine}</div>
+          <div className="text-sm font-medium">Assigned to you</div>
         </Link>
       </div>
 

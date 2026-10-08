@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
-import { ArrowRightLeft, ClipboardCheck, Pencil, Printer, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowRightLeft, ClipboardCheck, Pencil, Plus, Printer, Trash2 } from 'lucide-react';
 import QRCode from 'qrcode';
 import {
   GEAR_STATUSES,
@@ -26,6 +26,8 @@ import { fmtDate, fmtMoney, fmtTimestamp } from '../lib/format';
 import { notify } from '../components/toast';
 import { DueBadge, dueText, useInspectionSummaries } from '../inspections/common';
 import { useInspections } from '../inspections/useInspections';
+import { OverdueBadge, ReportIssueModal, SeverityBadge, WoStatusBadge, useGearWorkOrders } from '../workOrders/common';
+import { isOpen, workOrderNumber } from '@gear/shared';
 
 export function GearDetailPage() {
   const { id = '' } = useParams();
@@ -37,6 +39,9 @@ export function GearDetailPage() {
   const [history, setHistory] = useState<(StatusChange & WithId)[]>([]);
   const [qr, setQr] = useState<string>('');
   const [statusOpen, setStatusOpen] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  const workOrders = useGearWorkOrders(id);
+  const openWos = workOrders.filter((w) => isOpen(w.status));
   const summary = useInspectionSummaries().get(id);
   const inspections = useInspections({ gearId: id, max: 20 });
 
@@ -92,6 +97,11 @@ export function GearDetailPage() {
               <LinkButton to={`/gear/${g.id}/inspect`} variant="primary">
                 <ClipboardCheck size={16} /> Inspect
               </LinkButton>
+            )}
+            {g.status !== 'retired' && (
+              <Button onClick={() => setReporting(true)}>
+                <AlertTriangle size={16} /> Report issue
+              </Button>
             )}
             <AddPhotoButton links={{ gearId: g.id }} />
             {isManager && (
@@ -189,6 +199,45 @@ export function GearDetailPage() {
             </div>
           </Card>
 
+          <Card
+            title={`Work orders${openWos.length ? ` (${openWos.length} open)` : ''}`}
+            actions={
+              isManager &&
+              g.status !== 'retired' && (
+                <LinkButton size="sm" to={`/work-orders/new?gear=${g.id}`}>
+                  <Plus size={14} /> New
+                </LinkButton>
+              )
+            }
+          >
+            {workOrders.length ? (
+              <ul className="divide-y divide-stone-100 text-sm">
+                {workOrders.slice(0, 10).map((w) => (
+                  <li key={w.id}>
+                    <Link to={`/work-orders/${w.id}`} className="flex items-center justify-between gap-2 py-2 hover:bg-stone-50">
+                      <span className="min-w-0">
+                        <span className="block truncate">
+                          <span className="font-mono text-xs text-stone-500">{workOrderNumber(w.number)}</span> {w.title}
+                        </span>
+                        <span className="block text-xs text-stone-500">
+                          {w.assigneeId ? (users.get(w.assigneeId)?.displayName ?? 'Unknown') : 'Unassigned'}
+                          {isOpen(w.status) && w.dueDate ? ` · due ${fmtDate(w.dueDate)}` : ''}
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 flex-wrap justify-end gap-1">
+                        {isOpen(w.status) && <SeverityBadge severity={w.severity} />}
+                        <OverdueBadge wo={w} />
+                        <WoStatusBadge status={w.status} />
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-stone-500">No work orders.</p>
+            )}
+          </Card>
+
           <Card title="Inspections" actions={summary && <DueBadge state={summary.state} />}>
             {summary && summary.schedules.length > 0 ? (
               <ul className="mb-4 space-y-2 text-sm">
@@ -278,10 +327,13 @@ export function GearDetailPage() {
         </div>
       </div>
 
+      {reporting && <ReportIssueModal gearId={g.id} open onClose={() => setReporting(false)} />}
       <StatusModal
         open={statusOpen}
         onClose={() => setStatusOpen(false)}
         current={g.status}
+        allowActive={isAdmin && openWos.length === 0}
+        openCount={openWos.length}
         onSave={async (status, reason) => {
           await updateGear(
             uid,
@@ -298,26 +350,36 @@ export function GearDetailPage() {
   );
 }
 
+/**
+ * Gear normally changes status through inspections, reported issues and work
+ * orders. Managers can retire gear here; admins can return gear with no open
+ * work orders to Active (e.g. to correct imported data).
+ */
 function StatusModal({
   open,
   onClose,
   current,
+  allowActive,
+  openCount,
   onSave,
 }: {
   open: boolean;
   onClose(): void;
   current: GearStatus;
+  allowActive: boolean;
+  openCount: number;
   onSave(status: GearStatus, reason: string): Promise<void>;
 }) {
-  const [status, setStatus] = useState<GearStatus>(current);
+  const choices = GEAR_STATUSES.filter((s) => s !== current && (s === 'retired' || (s === 'active' && allowActive)));
+  const [status, setStatus] = useState<GearStatus | null>(null);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (open) {
-      setStatus(current);
+      setStatus(null);
       setReason('');
     }
-  }, [open, current]);
+  }, [open]);
   return (
     <Modal
       open={open}
@@ -328,8 +390,9 @@ function StatusModal({
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={busy || status === current || !reason.trim()}
+            disabled={busy || !status || !reason.trim()}
             onClick={async () => {
+              if (!status) return;
               setBusy(true);
               try {
                 await onSave(status, reason.trim());
@@ -344,22 +407,32 @@ function StatusModal({
       }
     >
       <div className="space-y-4">
-        <div className="grid gap-2">
-          {GEAR_STATUSES.map((s) => (
-            <label key={s} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${status === s ? 'border-brand-500 bg-brand-50' : 'border-stone-200'}`}>
-              <input type="radio" name="status" className="mt-1 accent-brand-700" checked={status === s} onChange={() => setStatus(s)} />
-              <span>
-                <span className="block text-sm font-medium">
-                  {STATUS_LABELS[s]} {s === current && <span className="text-stone-500">(current)</span>}
-                </span>
-                <span className="block text-xs text-stone-600">{STATUS_DESCRIPTIONS[s]}</span>
-              </span>
-            </label>
-          ))}
-        </div>
-        <Field label="Reason (required)" hint="Recorded in the status history.">
-          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Repaired tube seam, passed pressure test" />
-        </Field>
+        <p className="text-sm text-stone-600">
+          Currently <StatusBadge status={current} />. To flag a problem, use <b>Report issue</b> — it opens a work order. Gear goes back to Active when its
+          work orders are closed{openCount ? ` (${openCount} open)` : ''}.
+        </p>
+        {choices.length > 0 ? (
+          <>
+            <div className="grid gap-2">
+              {choices.map((s) => (
+                <label key={s} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${status === s ? 'border-brand-500 bg-brand-50' : 'border-stone-200'}`}>
+                  <input type="radio" name="status" className="mt-1 accent-brand-700" checked={status === s} onChange={() => setStatus(s)} />
+                  <span>
+                    <span className="block text-sm font-medium">{STATUS_LABELS[s]}</span>
+                    <span className="block text-xs text-stone-600">
+                      {s === 'active' ? 'No open work orders — set back to Active (admin only).' : STATUS_DESCRIPTIONS[s]}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <Field label="Reason (required)" hint="Recorded in the status history.">
+              <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Past end of life, cut up and disposed of" />
+            </Field>
+          </>
+        ) : (
+          <p className="text-sm text-stone-600">There’s nothing else you can change the status to here.</p>
+        )}
       </div>
     </Modal>
   );

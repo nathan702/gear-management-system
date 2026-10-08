@@ -30,11 +30,11 @@ test('admin: browse, change status, photo, labels, QR lookup, import', async ({ 
   await page.getByRole('link', { name: 'Raft 1', exact: true }).click();
   await expect(page.getByRole('heading', { name: /Raft 1/ })).toBeVisible();
   await page.getByRole('button', { name: 'Change status' }).click();
-  await page.getByLabel(/Quarantined/).check();
-  await page.getByLabel('Reason (required)').fill('Floor torn at stern');
+  await page.getByLabel(/Retired/).check();
+  await page.getByLabel('Reason (required)').fill('Floor torn beyond repair');
   await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByText('Quarantined: Floor torn at stern')).toBeVisible();
-  await expect(page.locator('ol').getByText('Floor torn at stern')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/Retired: Floor torn beyond repair/)).toBeVisible();
+  await expect(page.locator('ol').getByText('Floor torn beyond repair')).toBeVisible({ timeout: 15_000 });
 
   // Photo: queued locally, then uploaded to Storage
   await page.locator('input[type=file]').first().setInputFiles('web/public/icon-512.png');
@@ -119,18 +119,22 @@ test('works offline and syncs on reconnect', async ({ page, context }) => {
 
   await context.setOffline(true);
   await expect(page.getByText(/Offline — changes are saved on this device/)).toBeVisible();
-  await page.getByRole('button', { name: 'Change status' }).click();
+  await page.getByRole('button', { name: 'Report issue' }).click();
+  await page.getByLabel('What’s wrong?').fill('Small crack near skeg');
   await page.getByLabel(/Has issues/).check();
-  await page.getByLabel('Reason (required)').fill('Small crack near skeg');
-  await page.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByText('Has issues: Small crack near skeg')).toBeVisible();
+  await page.getByRole('button', { name: 'Report issue' }).last().click();
+  // The work order exists on this device; the number arrives after sync.
+  await expect(page.getByRole('heading', { name: /Small crack near skeg/ })).toBeVisible();
+  await expect(page.getByText('WO-…')).toBeVisible();
   await page.locator('input[type=file]').first().setInputFiles('web/public/icon-192.png');
   await expect(page.getByRole('heading', { name: 'Photos (1)' })).toBeVisible();
   await expect(page.getByText(/1 photo waiting/)).toBeVisible();
   await shot(page, '11-offline');
 
   await context.setOffline(false);
-  // History is written server-side once the change syncs; the photo uploads.
-  await expect(page.locator('ol').getByText('Small crack near skeg')).toBeVisible({ timeout: 20_000 });
+  // Once synced, a function numbers it and flags the gear; the photo uploads.
+  await expect(page.getByText(/^WO-\d{4}$/)).toBeVisible({ timeout: 20_000 });
   await expect(page.locator('[title="Waiting to upload"]')).toHaveCount(0, { timeout: 70_000 });
+  await page.getByRole('link', { name: 'Kayak 1' }).first().click();
+  await expect(page.getByText(/Has issues: WO-\d{4} issue reported: Small crack near skeg/)).toBeVisible({ timeout: 15_000 });
 });

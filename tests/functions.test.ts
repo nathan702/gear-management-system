@@ -51,7 +51,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   const db = getFirestore(admin);
-  for (const c of ['users', 'invites', 'gear', 'qrCodes', 'inspections']) await db.recursiveDelete(db.collection(c));
+  for (const c of ['users', 'invites', 'gear', 'qrCodes', 'inspections', 'workOrders', 'workOrderRules', 'counters']) await db.recursiveDelete(db.collection(c));
 });
 
 describe('activateAccount', () => {
@@ -174,5 +174,90 @@ describe('applyInspection', () => {
     await inspect('i1', { responses: [resp('fail', 'quarantined')] });
     expect(await processed('i1')).toMatchObject({ statusApplied: 'retired', statusBefore: 'retired' });
     expect((await gearData()).status).toBe('retired');
+  });
+});
+
+describe('work orders', () => {
+  const fdb = () => getFirestore(admin);
+  const resp = (result: string, failureOutcome: string, prompt = 'Check') => ({ itemId: prompt, prompt, type: 'pass_fail', failureOutcome, result, comment: '' });
+  const inspect = (id: string, date: string, responses: unknown[]) =>
+    fdb().doc(`inspections/${id}`).set({ gearId: 'g1', productId: 'p1', formId: 'f1', formName: 'Raft check', formVersion: 1, date, inspectorId: 'u1', notes: '', calculatedStatus: 'active', failedCount: 0, override: null, responses });
+  const processed = (id: string) =>
+    waitFor(async () => {
+      const d = await fdb().doc(`inspections/${id}`).get();
+      return d.get('processedAt') && d.data();
+    });
+  const gearData = async () => (await fdb().doc('gear/g1').get()).data()!;
+  const woData = async (id: string) => (await fdb().doc(`workOrders/${id}`).get()).data()!;
+
+  beforeEach(async () => {
+    await fdb().doc('gear/g1').set({ name: 'Raft 1', status: 'active', qrCode: 'CG-WO0001', productId: 'p1', programAreaId: 'river', locationId: 'rileys' });
+    await fdb().doc('products/p1').set({ model: 'Otter', categoryId: 'rafts', active: true });
+    await fdb().doc('users/tech').set({ displayName: 'Taylor Tech', role: 'technician', active: true, expiresAt: null });
+    await fdb().doc('workOrderRules/r1').set({ order: 1, name: 'River rafts', severity: null, programAreaId: 'river', categoryId: 'rafts', locationId: null, assigneeId: 'tech', dueInDays: 3, priority: 'urgent' });
+    await fdb().doc('workOrderRules/r2').set({ order: 2, name: 'Default', severity: null, programAreaId: null, categoryId: null, locationId: null, assigneeId: null, dueInDays: 30, priority: 'normal' });
+  });
+
+  it('opens one work order per gear from failed inspections and adds later failures to it', async () => {
+    await inspect('i1', '2026-09-01', [resp('fail', 'note', 'Scuffed'), resp('pass', 'quarantined')]);
+    const i1 = await processed('i1');
+    expect(i1.statusApplied).toBe('active');
+    const g = await gearData();
+    const woId = g.openInspectionWorkOrderId;
+    expect(woId).toBe(i1.workOrderId);
+    const wo = await woData(woId);
+    expect(wo).toMatchObject({ number: 1, source: 'inspection', severity: 'note', status: 'open', assigneeId: 'tech', priority: 'urgent', inspectionIds: ['i1'] });
+    expect(wo.dueDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    await inspect('i2', '2026-09-10', [resp('fail', 'quarantined', 'Seams')]);
+    expect(await processed('i2')).toMatchObject({ workOrderId: woId, statusApplied: 'quarantined' });
+    expect(await woData(woId)).toMatchObject({ severity: 'quarantined', inspectionIds: ['i1', 'i2'] });
+    const log = await fdb().collection(`workOrders/${woId}/log`).get();
+    expect(log.docs.map((d) => d.get('type')).sort()).toEqual(['created', 'inspection', 'inspection']);
+    expect((await fdb().collection('workOrders').get()).size).toBe(1);
+  });
+
+  it('returns gear to Active only when its last open work order closes', async () => {
+    await inspect('i1', '2026-09-01', [resp('fail', 'quarantined')]);
+    const woId = (await processed('i1')).workOrderId;
+    // A second, manual work order on the same gear.
+    await fdb().doc('workOrders/m1').set({ gearId: 'g1', productId: 'p1', title: 'Replace D-ring', source: 'manual', severity: 'has_issues', status: 'open', priority: 'normal', assigneeId: null, dueDate: null, createdBy: 'mgr' });
+    await waitFor(async () => (await woData('m1')).number === 2);
+
+    await fdb().doc(`workOrders/${woId}`).update({ status: 'done', resolution: 'Patched seam', updatedBy: 'tech' });
+    await waitFor(async () => (await woData(woId)).gearStatusAfterClose === 'has_issues');
+    let g = await gearData();
+    expect(g.status).toBe('has_issues');
+    expect(g.openInspectionWorkOrderId).toBeNull();
+    expect(g.statusReason).toBe('WO-0001 completed: Patched seam');
+
+    await fdb().doc('workOrders/m1').update({ status: 'cancelled', resolution: 'Not needed', updatedBy: 'mgr' });
+    await waitFor(async () => (await gearData()).status === 'active');
+    g = await gearData();
+    expect(g.statusSource).toBe('work_order');
+    expect((await woData('m1')).closedAt).toBeTruthy();
+
+    // The next failed inspection opens a fresh work order.
+    await inspect('i3', '2026-09-20', [resp('fail', 'has_issues')]);
+    const i3 = await processed('i3');
+    expect(i3.workOrderId).not.toBe(woId);
+    expect((await woData(i3.workOrderId)).number).toBe(3);
+  });
+
+  it('numbers reported issues, applies the rules and flags the gear', async () => {
+    await fdb().doc('workOrders/x1').set({ gearId: 'g1', productId: 'p1', title: 'Valve leaks', source: 'issue', severity: 'quarantined', status: 'open', priority: 'normal', assigneeId: null, dueDate: null, autoAssign: true, createdBy: 'staff1' });
+    await waitFor(async () => (await woData('x1')).number === 1);
+    const wo = await woData('x1');
+    expect(wo).toMatchObject({ assigneeId: 'tech', priority: 'urgent' });
+    expect(wo.autoAssign).toBeUndefined();
+    const g = await gearData();
+    expect(g).toMatchObject({ status: 'quarantined', statusSource: 'issue', statusReason: 'WO-0001 issue reported: Valve leaks' });
+
+    // Reopening after closing flags the gear again.
+    await fdb().doc('workOrders/x1').update({ status: 'done', resolution: 'Fixed', updatedBy: 'tech' });
+    await waitFor(async () => (await gearData()).status === 'active');
+    await fdb().doc('workOrders/x1').update({ status: 'open', updatedBy: 'mgr' });
+    await waitFor(async () => (await gearData()).status === 'quarantined');
+    expect((await woData('x1')).closedAt).toBeNull();
   });
 });

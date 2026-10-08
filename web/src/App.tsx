@@ -27,6 +27,10 @@ import { InspectionFormEditPage } from './pages/InspectionFormEditPage';
 import { InspectionDetailPage } from './pages/InspectionDetailPage';
 import { InspectPage } from './pages/InspectPage';
 import { AssignmentsPage } from './pages/AssignmentsPage';
+import { WorkOrdersPage } from './pages/WorkOrdersPage';
+import { WorkOrderDetailPage } from './pages/WorkOrderDetailPage';
+import { WorkOrderNewPage } from './pages/WorkOrderNewPage';
+import { WorkOrderRulesPage } from './pages/WorkOrderRulesPage';
 
 function SignedInApp() {
   const { uid } = useMe();
@@ -48,6 +52,10 @@ function SignedInApp() {
             <Route path="inspections/forms/:id" element={<InspectionFormEditPage />} />
             <Route path="inspections/assignments" element={<Manager><AssignmentsPage /></Manager>} />
             <Route path="inspections/:id" element={<InspectionDetailPage />} />
+            <Route path="work-orders" element={<WorkOrdersPage />} />
+            <Route path="work-orders/new" element={<Manager><WorkOrderNewPage /></Manager>} />
+            <Route path="work-orders/rules" element={<Admin><WorkOrderRulesPage /></Admin>} />
+            <Route path="work-orders/:id" element={<WorkOrderDetailPage />} />
             <Route path="products" element={<ProductsPage />} />
             <Route path="products/new" element={<Manager><ProductFormPage /></Manager>} />
             <Route path="products/:id" element={<ProductDetailPage />} />

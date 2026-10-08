@@ -15,6 +15,8 @@ import {
   SEED_LOCATIONS,
   SEED_PROGRAM_AREAS,
   SEED_CHECKLISTS,
+  DEFAULT_WORK_ORDER_RULES,
+  addDays,
   addMonths,
   generateQrCode,
   starterForms,
@@ -71,7 +73,19 @@ async function main() {
   const location = await ensureNamed(db, 'locations', SEED_LOCATIONS);
   const category = await ensureNamed(db, 'categories', SEED_CATEGORIES);
   const forms = await ensureForms();
+  await ensureRules();
   if (demo) await seedDemo(program, location, category, forms);
+}
+
+/** Starter work order rules (due dates by severity), if none exist. */
+async function ensureRules() {
+  const snap = await db.collection('workOrderRules').limit(1).get();
+  if (!snap.empty) return console.log('workOrderRules: already present');
+  const batch = db.batch();
+  for (const r of DEFAULT_WORK_ORDER_RULES)
+    batch.set(db.collection('workOrderRules').doc(), { ...r, programAreaId: null, categoryId: null, locationId: null, ...stamp() });
+  await batch.commit();
+  console.log(`workOrderRules: ${DEFAULT_WORK_ORDER_RULES.length} starter rules added`);
 }
 
 /** Starter inspection forms from the Gear Register's checklists, if none exist. */
@@ -195,6 +209,34 @@ async function seedDemo(
   }
   await batch.commit();
   console.log(`demo gear: ${n} items`);
+
+  // Every demo item with a problem gets a matching open work order.
+  const tech = (await auth.getUserByEmail('tech@calleva.org')).uid;
+  const problems = await db.collection('gear').where('status', 'in', ['has_issues', 'quarantined']).get();
+  const woBatch = db.batch();
+  let number = 1;
+  for (const g of problems.docs) {
+    const quarantined = g.get('status') === 'quarantined';
+    const ref = db.collection('workOrders').doc();
+    woBatch.set(ref, {
+      number: number++,
+      gearId: g.id,
+      productId: g.get('productId'),
+      title: g.get('statusReason'),
+      description: '',
+      source: 'issue',
+      severity: g.get('status'),
+      status: 'open',
+      priority: quarantined ? 'high' : 'normal',
+      assigneeId: quarantined ? tech : null,
+      dueDate: addDays(todayIso(), quarantined ? (number % 3 === 0 ? -2 : 5) : 25),
+      ...stamp(),
+    });
+    woBatch.set(ref.collection('log').doc('created'), { type: 'created', text: `Issue reported: ${g.get('statusReason')}`, by: SEED, at: FieldValue.serverTimestamp() });
+  }
+  woBatch.set(db.doc('counters/workOrders'), { next: number });
+  await woBatch.commit();
+  console.log(`demo work orders: ${number - 1}`);
 }
 
 main().then(
