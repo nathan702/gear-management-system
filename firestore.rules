@@ -55,7 +55,8 @@ service cloud.firestore {
                              || (request.resource.data.role == 'admin' && request.resource.data.active == true)))
                     || (uid == request.auth.uid && isActive() && stampedUpdate()
                         && onlyChanged(['displayName', 'phone', 'slackUserId', 'homeProgramAreaId',
-                                        'notificationPrefs', 'updatedAt', 'updatedBy']));
+                                        'notificationPrefs', 'updatedAt', 'updatedBy'])
+        && (!('notificationPrefs' in request.resource.data) || request.resource.data.notificationPrefs is map));
       allow delete: if false;
     }
 
@@ -374,6 +375,23 @@ service cloud.firestore {
         && !('processedAt' in request.resource.data);
       allow update: if false;
       allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------- notifications
+
+    // Outbox written and delivered by Cloud Functions. People can see their
+    // own; admins see everything (for troubleshooting).
+    match /notifications/{id} {
+      allow read: if isAdmin() || (isActive() && resource.data.userId == request.auth.uid);
+      allow write: if false;
+    }
+
+    // Email/Slack credentials: admins can set them but nobody can read them
+    // back from the app — only Cloud Functions use them.
+    match /private/{doc} {
+      allow read: if false;
+      allow create, update: if isAdmin();
+      allow delete: if false;
     }
 
     // ----------------------------------------------------------------- photos

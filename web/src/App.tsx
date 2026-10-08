@@ -34,6 +34,7 @@ import { WorkOrderRulesPage } from './pages/WorkOrderRulesPage';
 import { KitsPage } from './pages/KitsPage';
 import { KitPage } from './pages/KitPage';
 import { ListsPage, ListEditPage } from './pages/ListsPage';
+import { NotificationsAdminPage } from './pages/NotificationsAdminPage';
 
 function SignedInApp() {
   const { uid } = useMe();
@@ -77,6 +78,7 @@ function SignedInApp() {
             <Route path="admin/import-export" element={<Manager><ImportExportPage /></Manager>} />
             <Route path="admin/users" element={<Admin><UsersPage /></Admin>} />
             <Route path="admin/settings" element={<Admin><SettingsPage /></Admin>} />
+            <Route path="admin/notifications" element={<Admin><NotificationsAdminPage /></Admin>} />
             <Route path="login" element={<Navigate to="/" replace />} />
             <Route path="*" element={<p className="text-stone-600">Page not found.</p>} />
           </Route>

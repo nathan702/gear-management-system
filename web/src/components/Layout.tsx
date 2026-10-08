@@ -6,6 +6,7 @@ import {
   CloudOff,
   Wrench,
   Backpack,
+  Bell,
   ListChecks,
   Home,
   LogOut,
@@ -76,6 +77,7 @@ export function Layout() {
     ...(isAdmin
       ? [
           { to: '/admin/users', label: 'Users', icon: <Users size={18} /> },
+          { to: '/admin/notifications', label: 'Notifications', icon: <Bell size={18} /> },
           { to: '/admin/settings', label: 'Settings', icon: <Settings size={18} /> },
         ]
       : []),

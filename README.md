@@ -13,8 +13,8 @@ with no signal.
 | 2. Inspections | Form builder, inspections (offline), failure outcomes, overrides, time/usage schedules, who-inspects-what | **Built** |
 | 3. Work orders | One open work order per gear from failed inspections (later failures added to it), issue reports, manual work orders, assignment rules, close → back to Active | **Built** |
 | 4. Kits, lists, check-outs | Lists of products/categories, kits with dates and no double-booking, fill from list, scan to add, check-out/return with days used, single-item check-outs, usage logging | **Built** |
-| 5. Notifications | Per-user email/Slack preferences, admin channel routing, reminders | Next |
-| 6. Reporting | Usage, inspection completion, inventory, age, replacement budget forecast | |
+| 5. Notifications | Email and Slack; per-person choices; daily reminders (inspections due, work orders due) to inspectors and kit holders; manager summary; alerts for assignments, new work orders, quarantines, problems with kit gear; shared channels; delivery log | **Built** |
+| 6. Reporting | Usage, inspection completion, inventory, age, replacement budget forecast | Next |
 
 ## Stack
 
@@ -56,6 +56,9 @@ e2e/         Playwright browser tests (run against the emulators)
 | `kits` | Name, owner, program area, optional start/end dates, source list, gear ids, status (Planned → Checked out → Returned). |
 | `checkouts` | A single item checked out outside a kit: who, from, due back, returned. |
 | `usageLogs` | Days (and optional uses) a piece of gear was actually used. Permanent; a function adds them to `gear.stats`, which drives usage-based inspection schedules. |
+| `notifications` | Outbox: one document per message (event, email or Slack, recipient, text, status *pending → sent / skipped / failed*). The id is a de-duplication key. |
+| `settings/notifications` | On/off, daily reminder hour, shared channels (Slack channel or email address + which events). |
+| `private/notifications` | SMTP and Slack credentials — admins can set them, nobody can read them from the app. |
 | `settings/app` | Org name, auto-join domains, QR link base URL, label template and printer offsets. |
 | `auditLog` | Who changed which fields of which record, when. |
 
@@ -87,6 +90,22 @@ Gear status only gets worse through inspections and issue reports, and only gets
 - **Check out / return** — checking a kit out flags anything not ready (and any product set to need an inspection *before each check-out* that hasn't had one today). Returning asks how many days each item was actually used.
 - Single items can be **checked out** from their gear page too, and use outside kits can be **logged** directly. Days used feed the *every N days used* inspection schedules.
 
+### Notifications
+
+Everyone picks, on their profile page, which of these they get by email and/or Slack:
+
+| Event | Who | Default |
+|---|---|---|
+| Daily reminders | Inspectors assigned to the gear and anyone with it in a kit that's current or starts within 14 days (inspections overdue / due soon); assignees of work orders overdue or due within 3 days | Email |
+| Manager summary | Managers and admins: all overdue inspections and work orders, unassigned work orders | Email |
+| Work order assigned to you | The assignee | Email + Slack |
+| New work orders | Managers (opt-in) | Off |
+| Your report resolved | Whoever opened the work order, when it's completed or cancelled | Email |
+| Gear quarantined | Managers (opt-in) | Off |
+| Problem with gear in your kit | Owners of current/upcoming kits when their gear is quarantined or gets an issue | Email + Slack |
+
+Admins set it up under **Manage → Notifications**: the reminder hour (Eastern), an SMTP account for email (Google Workspace: smtp.gmail.com with an app password), a Slack bot token (scopes `chat:write`, `users:read`, `users:read.email` — people are matched to Slack by email), and shared channels that receive chosen events. Messages queue in an outbox delivered by a Cloud Function; the delivery log shows what was sent, skipped (not set up) or failed and why. Without credentials nothing is sent.
+
 ## Roles
 
 | | Admin | Manager | Staff | Technician |
@@ -98,7 +117,7 @@ Gear status only gets worse through inspections and issue reports, and only gets
 | Manage other people's kits; add quarantined/overdue gear to kits (with a warning) | ✓ | | | |
 | Create, edit, assign, cancel and reopen any work order; retire gear | ✓ | ✓ | | |
 | Add/edit gear & products, change status, reference data, inspection forms & assignments, import/export | ✓ | ✓ | | |
-| Users, invitations, settings, work order assignment rules, delete records, set gear back to Active directly | ✓ | | | |
+| Users, invitations, settings, notifications setup, work order assignment rules, delete records, set gear back to Active directly | ✓ | | | |
 
 Admins can delete inspection and work order records (the gear's status isn't rolled back). Technicians land on *Work orders → Assigned to me*, and their phone menu shows Work orders instead of Inspections.
 

@@ -370,3 +370,27 @@ describe('lists, kits, check-outs and usage', () => {
     await assertFails(updateDoc(doc(as('admin'), 'usageLogs', 'u1'), { daysUsed: 5 }));
   });
 });
+
+describe('notifications', () => {
+  it('shows people their own notifications and admins everything; nobody writes them', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'notifications', 'n1'), { userId: 'staff', channel: 'email', status: 'sent', subject: 's', text: 't' });
+      await setDoc(doc(ctx.firestore(), 'notifications', 'n2'), { userId: 'manager', channel: 'email', status: 'sent', subject: 's', text: 't' });
+    });
+    await assertSucceeds(getDoc(doc(as('staff'), 'notifications', 'n1')));
+    await assertFails(getDoc(doc(as('staff'), 'notifications', 'n2')));
+    await assertSucceeds(getDoc(doc(as('admin'), 'notifications', 'n2')));
+    await assertFails(setDoc(doc(as('admin'), 'notifications', 'n3'), { userId: 'admin' }));
+  });
+
+  it('lets admins set credentials that nobody can read back', async () => {
+    await assertSucceeds(setDoc(doc(as('admin'), 'private', 'notifications'), { slackToken: 'xoxb-1' }));
+    await assertFails(getDoc(doc(as('admin'), 'private', 'notifications')));
+    await assertFails(setDoc(doc(as('manager'), 'private', 'notifications'), { slackToken: 'xoxb-2' }));
+  });
+
+  it('lets people choose their own notification settings', async () => {
+    await assertSucceeds(updateDoc(doc(as('staff'), 'users', 'staff'), { notificationPrefs: { daily_digest: { email: false } }, slackUserId: 'U1', ...stampUpdate('staff') }));
+    await assertFails(updateDoc(doc(as('staff'), 'users', 'staff'), { notificationPrefs: 'all', ...stampUpdate('staff') }));
+  });
+});

@@ -51,7 +51,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   const db = getFirestore(admin);
-  for (const c of ['users', 'invites', 'gear', 'qrCodes', 'inspections', 'workOrders', 'workOrderRules', 'counters', 'usageLogs']) await db.recursiveDelete(db.collection(c));
+  for (const c of ['users', 'invites', 'gear', 'qrCodes', 'inspections', 'workOrders', 'workOrderRules', 'counters', 'usageLogs', 'notifications', 'kits', 'private']) await db.recursiveDelete(db.collection(c));
 });
 
 describe('activateAccount', () => {
@@ -274,5 +274,89 @@ describe('onUsageLogged', () => {
     });
     expect(stats).toEqual({ daysUsed: 17, uses: 3, lastUsedDate: '2026-06-05' });
     expect((await db.doc('usageLogs/u1').get()).get('processedAt')).toBeTruthy();
+  });
+});
+
+describe('notifications', () => {
+  const fdb = () => getFirestore(admin);
+  const outbox = async (filter: (d: Record<string, unknown>) => boolean) =>
+    (await fdb().collection('notifications').get()).docs.map((d) => ({ id: d.id, ...d.data() })).filter(filter);
+
+  beforeEach(async () => {
+    await fdb().doc('settings/notifications').set({ enabled: true, digestHour: 7, routes: [{ id: 'r1', name: '#gear', type: 'slack', target: 'C123', events: ['gear_quarantined', 'work_order_created'] }] });
+    for (const [id, role] of [['mgr', 'manager'], ['tech', 'technician'], ['staff1', 'staff']] as const)
+      await fdb().doc(`users/${id}`).set({ email: `${id}@calleva.org`, displayName: id, role, active: true, expiresAt: null });
+    await fdb().doc('gear/g1').set({ name: 'Raft 1', status: 'active', qrCode: 'CG-NOTE01', productId: null });
+  });
+
+  it('tells the assignee, managers and routed channels about a new work order, then skips sending without credentials', async () => {
+    await fdb().doc('workOrders/w1').set({ number: 7, gearId: 'g1', productId: null, title: 'Valve leaks', source: 'manual', severity: 'has_issues', status: 'open', priority: 'normal', assigneeId: 'tech', dueDate: '2026-10-20', createdBy: 'staff1', updatedBy: 'staff1' });
+    const sent = await waitFor(async () => {
+      const list = await outbox((d) => String(d.subject).startsWith('WO-0007'));
+      return list.length >= 3 && list;
+    });
+    // Managers don't get new-work-order alerts unless they opt in; the routed channel does.
+    expect(sent.map((n) => `${n.event}:${n.userId ?? n.target}:${n.channel}`).sort()).toEqual([
+      'work_order_assigned:tech:email',
+      'work_order_assigned:tech:slack',
+      'work_order_created:C123:slack',
+    ]);
+    // No email/Slack credentials in the emulator, so delivery is skipped with a reason.
+    const delivered = await waitFor(async () => {
+      const list = await outbox((d) => d.status !== 'pending' && String(d.subject).startsWith('WO-0007'));
+      return list.length === sent.length && list;
+    });
+    expect(delivered.every((n) => n.status === 'skipped' && String(n.error).includes('not set up'))).toBe(true);
+  });
+
+  it('tells kit owners when their gear is quarantined', async () => {
+    await fdb().doc('kits/k1').set({ name: 'Trip', ownerId: 'staff1', gearIds: ['g1'], status: 'planned', startDate: null, endDate: null });
+    await fdb().doc('gear/g1').update({ status: 'quarantined', statusReason: 'Torn floor', updatedBy: 'tech' });
+    const sent = await waitFor(async () => {
+      const list = await outbox((d) => d.event === 'kit_gear_flagged');
+      return list.length && list;
+    });
+    expect(sent.map((n) => [n.userId, n.channel, n.subject])).toEqual([
+      ['staff1', 'email', 'In your kit: Raft 1 is now quarantined'],
+      ['staff1', 'slack', 'In your kit: Raft 1 is now quarantined'],
+    ]);
+    expect((await outbox((d) => d.event === 'gear_quarantined')).map((n) => n.userId ?? n.target).sort()).toEqual(['C123']);
+  });
+});
+
+describe('email delivery', () => {
+  it('sends through the configured SMTP server', async () => {
+    const { SMTPServer } = await import('smtp-server');
+    const received: string[] = [];
+    const server = new SMTPServer({
+      authOptional: true,
+      disabledCommands: ['STARTTLS'],
+      onData(stream, _session, cb) {
+        let raw = '';
+        stream.on('data', (c: Buffer) => (raw += c.toString()));
+        stream.on('end', () => {
+          received.push(raw);
+          cb();
+        });
+      },
+    });
+    await new Promise<void>((r) => server.listen(2525, '127.0.0.1', r));
+    try {
+      const fdb = getFirestore(admin);
+      await fdb.doc('private/notifications').set({ smtp: { host: '127.0.0.1', port: 2525, secure: false, from: 'Calleva Gear <gear@calleva.org>' } });
+      await fdb.doc('users/u-mail').set({ email: 'sam@gmail.com', displayName: 'Sam', role: 'staff', active: true, expiresAt: null });
+      await fdb.doc('notifications/t1').set({ event: 'test', channel: 'email', userId: 'u-mail', target: null, subject: 'Hello from the tests', text: 'Body text', link: 'https://gear.example/x', status: 'pending' });
+      const n = await waitFor(async () => {
+        const d = (await fdb.doc('notifications/t1').get()).data();
+        return d?.status !== 'pending' && d;
+      });
+      expect(n).toMatchObject({ status: 'sent', target: 'sam@gmail.com', error: null });
+      expect(received).toHaveLength(1);
+      expect(received[0]).toContain('Subject: Hello from the tests');
+      expect(received[0]).toContain('To: sam@gmail.com');
+    } finally {
+      await getFirestore(admin).doc('private/notifications').delete();
+      await new Promise<void>((r) => server.close(() => r()));
+    }
   });
 });

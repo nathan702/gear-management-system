@@ -8,3 +8,4 @@ export * from './inspectionIO';
 export * from './workOrders';
 export * from './kits';
 export * from './kitIO';
+export * from './notifications';
