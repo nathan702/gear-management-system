@@ -109,3 +109,30 @@ test('mobile inspection', async ({ page }) => {
   await page.locator('li', { hasText: 'Foam liner intact' }).getByRole('button', { name: 'Fail' }).click();
   await shot(page, 'p2-07-mobile-inspect');
 });
+
+test('in-service checks come due only while gear is in use, for whoever has it', async ({ page }) => {
+  await signIn(page, 'staff');
+  // Idle gear: the weekly in-service check isn't due.
+  await page.goto('/gear?q=kayak%205');
+  await page.getByRole('link', { name: 'Kayak 5', exact: true }).click();
+  await expect(page.getByText(/every 7 days in use · not in use/)).toBeVisible();
+
+  // Taking it out makes it due today, for this person.
+  await page.getByRole('button', { name: 'Check out', exact: true }).click();
+  await page.getByRole('button', { name: /^Check out( anyway)?$/ }).last().click();
+  await expect(page.getByText(/every 7 days in use · due today/)).toBeVisible();
+  await page.goto('/inspections?mine=1&kind=in_service');
+  await expect(page.getByRole('link', { name: 'Kayak 5', exact: true })).toBeVisible();
+  await shot(page, 'p2b-01-in-service-due');
+
+  // Doing it clears it until next week.
+  await page.goto('/gear?q=kayak%205');
+  await page.getByRole('link', { name: 'Kayak 5', exact: true }).click();
+  await page.getByRole('link', { name: 'Inspect', exact: true }).click();
+  await page.getByRole('button', { name: /Pre-use inspection/ }).click();
+  await page.getByRole('button', { name: 'Pass all unanswered checks' }).click();
+  await page.getByRole('button', { name: 'Submit inspection' }).click();
+  await expect(page.getByText('No failures').or(page.getByText('Stayed'))).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('link', { name: 'Kayak 5' }).first().click();
+  await expect(page.getByText(/every 7 days in use · next /)).toBeVisible({ timeout: 15_000 });
+});

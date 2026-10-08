@@ -17,6 +17,7 @@ import {
   wantedChannels,
   workOrderNumber,
   type AppSettings,
+  type Checkout,
   type Gear,
   type InspectionAssignment,
   type InspectionForm,
@@ -231,7 +232,7 @@ export const notifyGearStatus = onDocumentUpdated('gear/{gearId}', async (event)
 /* ------------------------------------------------------------ daily digest */
 
 export async function runDigest(store: Firestore, today: string, keySuffix = '') {
-  const [gearSnap, productsSnap, formsSnap, assignSnap, kitsSnap, woSnap, base] = await Promise.all([
+  const [gearSnap, productsSnap, formsSnap, assignSnap, kitsSnap, woSnap, base, checkoutSnap] = await Promise.all([
     store.collection('gear').get(),
     store.collection('products').get(),
     store.collection('inspectionForms').get(),
@@ -239,6 +240,7 @@ export async function runDigest(store: Firestore, today: string, keySuffix = '')
     store.collection('kits').get(),
     store.collection('workOrders').where('status', 'in', [...OPEN_WORK_ORDER_STATUSES]).get(),
     appUrl(),
+    store.collection('checkouts').where('status', '==', 'out').get(),
   ]);
   const gear = gearSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Gear) }));
   const openWorkOrders = woSnap.docs.map((d) => ({ id: d.id, ...(d.data() as WorkOrder) }));
@@ -249,6 +251,7 @@ export async function runDigest(store: Firestore, today: string, keySuffix = '')
     forms: new Map(formsSnap.docs.map((d) => [d.id, d.data() as InspectionForm])),
     assignments: assignSnap.docs.map((d) => d.data() as InspectionAssignment),
     kits: kitsSnap.docs.map((d) => ({ id: d.id, ...(d.data() as Kit) })),
+    checkouts: checkoutSnap.docs.map((d) => d.data() as Checkout),
     openWorkOrders,
   });
   for (const d of users) await notifyUsers('daily_digest', [d.userId], digestMessage(d, base), `digest-${today}${keySuffix}`);

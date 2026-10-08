@@ -85,7 +85,8 @@ export function ProductDetailPage() {
                     <span className="text-stone-600">
                       {' — '}
                       {[
-                        s.everyMonths ? `every ${s.everyMonths} month${s.everyMonths === 1 ? '' : 's'}` : null,
+                        s.kind === 'in_service' ? `in-service, every ${s.everyDaysInUse && s.everyDaysInUse > 1 ? `${s.everyDaysInUse} days` : 'day'} in use` : null,
+                        s.kind !== 'in_service' && s.everyMonths ? `every ${s.everyMonths} month${s.everyMonths === 1 ? '' : 's'}` : null,
                         s.everyDaysUsed ? `every ${s.everyDaysUsed} days used` : null,
                         s.beforeEachCheckout ? 'before each check-out' : null,
                       ]

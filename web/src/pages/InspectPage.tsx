@@ -22,7 +22,7 @@ import { compareText, useData } from '../data/DataProvider';
 import { submitInspection } from '../data/writes';
 import { Button, Card, Checkbox, Field, Input, PageHeader, Select, StatusBadge, Textarea } from '../components/ui';
 import { AddPhotoButton, PhotoGallery, usePhotos } from '../photos/PhotoGallery';
-import { DueBadge, dueText, useInspectionSummaries } from '../inspections/common';
+import { DueBadge, KindTag, dueText, useInspectionSummaries } from '../inspections/common';
 import { notify } from '../components/toast';
 
 interface Answer {
@@ -69,7 +69,9 @@ export function InspectPage() {
                 <li key={f.id}>
                   <button className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-stone-50" onClick={() => setParams({ form: f.id })}>
                     <span>
-                      <span className="block font-medium">{f.name}</span>
+                      <span className="flex items-center gap-2 font-medium">
+                        <KindTag kind={s.kind} /> {f.name}
+                      </span>
                       <span className="block text-xs text-stone-500">{dueText(s) || 'No limit set'}</span>
                     </span>
                     <DueBadge state={s.state} short />

@@ -1,8 +1,9 @@
 import { gearInspectionSummary, responsibleInspectors, type GearInspectionSummary } from './inspections';
 import { addDays } from './gear';
-import { kitIsLive } from './kits';
+import { gearInUse } from './kits';
 import { isOverdue, workOrderNumber } from './workOrders';
 import type {
+  Checkout,
   Gear,
   InspectionAssignment,
   InspectionForm,
@@ -18,7 +19,10 @@ import type {
 } from './types';
 
 export const EVENT_LABELS: Record<NotificationEvent, { label: string; help: string; managersOnly?: boolean }> = {
-  daily_digest: { label: 'Daily reminders', help: 'Inspections you look after or have in a kit that are due, and your work orders that are due or overdue.' },
+  daily_digest: {
+    label: 'Daily reminders',
+    help: 'In-service inspections due on gear you have out, in-depth inspections assigned to you, and your work orders that are due or overdue.',
+  },
   manager_digest: { label: 'Manager summary', help: 'Daily summary of overdue inspections and overdue work orders across all gear.', managersOnly: true },
   work_order_assigned: { label: 'Work order assigned to you', help: 'When a work order is assigned to you.' },
   work_order_created: { label: 'New work orders', help: 'Every new work order (failed inspection, reported issue or manual).', managersOnly: true },
@@ -59,7 +63,8 @@ export interface DigestInspection {
   gearName: string;
   state: 'overdue' | 'due_soon';
   forms: string[];
-  why: 'assigned' | 'kit';
+  /** in_service: you have the gear; assigned: you inspect it (in-depth). */
+  why: 'in_service' | 'assigned';
 }
 
 export interface DigestWorkOrder {
@@ -82,46 +87,45 @@ export interface DigestInput {
   products: ReadonlyMap<string, Product>;
   forms: ReadonlyMap<string, Pick<InspectionForm, 'name'>>;
   assignments: Pick<InspectionAssignment, 'scope' | 'refId' | 'userIds'>[];
-  kits: (Pick<Kit, 'ownerId' | 'gearIds' | 'status' | 'startDate' | 'endDate'> & { id: string })[];
+  kits: (Pick<Kit, 'ownerId' | 'gearIds' | 'status' | 'startDate' | 'endDate' | 'checkedOutDate'> & { id: string })[];
+  checkouts: Pick<Checkout, 'gearId' | 'userId' | 'startDate' | 'status'>[];
   openWorkOrders: (Pick<WorkOrder, 'number' | 'title' | 'gearId' | 'assigneeId' | 'dueDate' | 'status'> & { id: string })[];
-  /** Kit gear counts if the kit is live and starts within this many days. Default 14. */
-  kitLookaheadDays?: number;
 }
 
 /**
- * Who should hear about what today. Inspections go to the people assigned
- * to inspect the gear and to anyone holding it in a current or soon-starting
- * kit; work orders go to their assignee when overdue or due within 3 days.
+ * Who should hear about what today. In-service inspections go to whoever
+ * has the gear (checked out or in a current kit); in-depth inspections go to
+ * the people assigned to inspect it; work orders go to their assignee when
+ * overdue or due within 3 days.
  */
 export function buildDigests(input: DigestInput): { users: UserDigest[]; summaries: Map<string, GearInspectionSummary> } {
-  const lookahead = addDays(input.today, input.kitLookaheadDays ?? 14);
   const soon = addDays(input.today, 3);
+  const inUse = gearInUse(input.kits, input.checkouts, input.today);
   const byUser = new Map<string, UserDigest>();
   const get = (uid: string) => {
     if (!byUser.has(uid)) byUser.set(uid, { userId: uid, inspections: [], workOrders: [] });
     return byUser.get(uid)!;
   };
   const summaries = new Map<string, GearInspectionSummary>();
-  const kitHolders = new Map<string, Set<string>>();
-  for (const k of input.kits) {
-    if (!kitIsLive(k, input.today)) continue;
-    if (k.status !== 'checked_out' && k.startDate && k.startDate > lookahead) continue;
-    for (const g of k.gearIds) {
-      if (!kitHolders.has(g)) kitHolders.set(g, new Set());
-      kitHolders.get(g)!.add(k.ownerId);
-    }
-  }
 
   for (const g of input.gear) {
     const product = g.productId ? input.products.get(g.productId) : undefined;
-    const s = gearInspectionSummary(g, product, input.today);
+    const use = inUse.get(g.id);
+    const s = gearInspectionSummary(g, product, input.today, use);
     summaries.set(g.id, s);
-    if (s.state !== 'overdue' && s.state !== 'due_soon') continue;
-    const forms = s.schedules.filter((x) => x.state !== 'ok').map((x) => input.forms.get(x.schedule.formId)?.name ?? 'Inspection');
-    const item = (why: DigestInspection['why']): DigestInspection => ({ gearId: g.id, gearName: g.name, state: s.state as DigestInspection['state'], forms, why });
-    const assigned = new Set(responsibleInspectors(g, product, input.assignments)?.userIds ?? []);
-    for (const uid of assigned) get(uid).inspections.push(item('assigned'));
-    for (const uid of kitHolders.get(g.id) ?? []) if (!assigned.has(uid)) get(uid).inspections.push(item('kit'));
+    for (const kind of ['in_service', 'in_depth'] as const) {
+      const due = s.schedules.filter((x) => x.kind === kind && x.state !== 'ok');
+      if (!due.length) continue;
+      const item: DigestInspection = {
+        gearId: g.id,
+        gearName: g.name,
+        state: due.some((x) => x.state === 'overdue') ? 'overdue' : 'due_soon',
+        forms: due.map((x) => input.forms.get(x.schedule.formId)?.name ?? 'Inspection'),
+        why: kind === 'in_service' ? 'in_service' : 'assigned',
+      };
+      const people = kind === 'in_service' ? (use?.holderIds ?? []) : (responsibleInspectors(g, product, input.assignments)?.userIds ?? []);
+      for (const uid of people) get(uid).inspections.push(item);
+    }
   }
 
   const gearName = new Map(input.gear.map((g) => [g.id, g.name]));
@@ -157,7 +161,7 @@ export function digestMessage(d: UserDigest, appUrl: string): Message {
   if (d.inspections.length) {
     lines.push(`Inspections (${d.inspections.length}${overdue ? `, ${overdue} overdue` : ''}):`);
     for (const i of d.inspections.slice(0, 30))
-      lines.push(`• ${i.gearName} — ${i.forms.join(', ')} ${i.state === 'overdue' ? 'OVERDUE' : 'due soon'}${i.why === 'kit' ? ' (in your kit)' : ''}`);
+      lines.push(`• ${i.gearName} — ${i.forms.join(', ')} ${i.state === 'overdue' ? 'OVERDUE' : i.why === 'in_service' ? 'due today' : 'due soon'}${i.why === 'in_service' ? ' (you have it out)' : ''}`);
     if (d.inspections.length > 30) lines.push(`…and ${d.inspections.length - 30} more`);
   }
   if (d.workOrders.length) {

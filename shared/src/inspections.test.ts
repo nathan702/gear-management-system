@@ -153,3 +153,57 @@ describe('form spreadsheets', () => {
     ]);
   });
 });
+
+describe('in-service schedules', () => {
+  const weekly = { formId: 'pre', kind: 'in_service' as const, everyDaysInUse: 7 };
+  const gear = (lastDate?: string) => ({
+    status: 'active' as const,
+    inspectionState: lastDate ? { pre: { lastDate, lastInspectionId: 'i', failedCount: 0, daysUsedAtLast: 0 } } : undefined,
+  });
+
+  it('is never due while the gear sits unused', () => {
+    expect(scheduleStatus(gear('2026-01-01'), weekly, '2026-10-08', null)).toMatchObject({ state: 'ok', dueDate: null, inUse: false });
+  });
+
+  it('is due the day use resumes after time idle, and overdue after that', () => {
+    const use = { since: '2026-10-08', holderIds: ['u'] };
+    expect(scheduleStatus(gear('2026-09-01'), weekly, '2026-10-08', use)).toMatchObject({ state: 'due_soon', dueDate: '2026-10-08' });
+    expect(scheduleStatus(gear('2026-09-01'), weekly, '2026-10-09', use)).toMatchObject({ state: 'overdue' });
+    expect(scheduleStatus(gear(), weekly, '2026-10-08', use)).toMatchObject({ state: 'due_soon', dueDate: '2026-10-08' });
+  });
+
+  it('comes due every N days during continuous use', () => {
+    const use = { since: '2026-09-01', holderIds: ['u'] };
+    expect(scheduleStatus(gear('2026-10-05'), weekly, '2026-10-08', use)).toMatchObject({ state: 'ok', dueDate: '2026-10-12' });
+    expect(scheduleStatus(gear('2026-10-05'), weekly, '2026-10-12', use).state).toBe('due_soon');
+    expect(scheduleStatus(gear('2026-10-07'), { ...weekly, everyDaysInUse: 1 }, '2026-10-08', use)).toMatchObject({ state: 'due_soon', dueDate: '2026-10-08' });
+  });
+
+  it('keeps in-service and in-depth states apart', () => {
+    const product = { inspectionSchedules: [weekly, { formId: 'annual', everyMonths: 12 }] };
+    const g = { ...gear('2026-09-01'), firstUseDate: '2026-06-01' };
+    const s = gearInspectionSummary(g, product, '2026-10-09', { since: '2026-10-08', holderIds: ['u'] });
+    expect(s).toMatchObject({ state: 'overdue', inServiceState: 'overdue', inDepthState: 'ok' });
+  });
+});
+
+describe('gearInUse', () => {
+  it('counts checked-out kits, in-date kits and open check-outs', async () => {
+    const { gearInUse } = await import('./kits');
+    const m = gearInUse(
+      [
+        { ownerId: 'a', gearIds: ['g1'], status: 'checked_out', startDate: '2026-10-10', endDate: null, checkedOutDate: '2026-10-07' },
+        { ownerId: 'b', gearIds: ['g2'], status: 'planned', startDate: '2026-10-01', endDate: '2026-10-09' },
+        { ownerId: 'c', gearIds: ['g3'], status: 'planned', startDate: '2026-10-20', endDate: null },
+        { ownerId: 'd', gearIds: ['g4'], status: 'planned', startDate: null, endDate: null },
+        { ownerId: 'e', gearIds: ['g5'], status: 'returned', startDate: '2026-10-01', endDate: '2026-10-09' },
+      ],
+      [{ gearId: 'g1', userId: 'f', startDate: '2026-10-05', status: 'out' }],
+      '2026-10-08',
+    );
+    expect(Object.fromEntries(m)).toEqual({
+      g1: { since: '2026-10-05', holderIds: ['a', 'f'] },
+      g2: { since: '2026-10-01', holderIds: ['b'] },
+    });
+  });
+});
