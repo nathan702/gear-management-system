@@ -69,7 +69,9 @@ export function useAvailability() {
       // check-out, any kit holding it today or a current check-out does.
       const checkedOut = !!c?.checkout && (!forKit || !forKit.startDate || forKit.startDate <= today);
       const inOtherKit = forKit ? conflicts.length > 0 : !!c?.current;
-      return { ...gearAvailability(gear, summaries.get(gear.id)?.state ?? 'none', { inOtherKit, checkedOut }), conflicts };
+      // Only routine (in-depth) inspections block adding gear; in-service
+      // checks are done by whoever takes it.
+      return { ...gearAvailability(gear, summaries.get(gear.id)?.inDepthState ?? 'none', { inOtherKit, checkedOut }), conflicts };
     };
   }, [kits, summaries, commitments]);
 }

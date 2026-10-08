@@ -140,6 +140,7 @@ export const SEED_CHECKLISTS: Record<string, string[]> = {
     'Size and rating label legible',
     'Fit and buoyancy check done',
   ],
+  'Pre-use': ['Visually intact, no new damage', 'Buckles, closures and fittings work', 'Clean, dry and fit for use'],
   Hull: [
     'Hull free of cracks, holes or deep gouges',
     'Seat, footpegs and bulkheads secure',

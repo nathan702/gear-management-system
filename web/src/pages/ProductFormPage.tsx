@@ -46,8 +46,8 @@ export function ProductFormPage() {
     if (form.manufacturerId === NEW && !form.newManufacturer.trim()) return setError('Enter the new manufacturer’s name');
     const sched = schedules.filter((x) => x.formId);
     if (new Set(sched.map((x) => x.formId)).size !== sched.length) return setError('Each inspection form can only be scheduled once per product.');
-    if (sched.some((x) => !numOrNull(x.everyMonths) && !numOrNull(x.everyDaysUsed) && !x.beforeEachCheckout))
-      return setError('Each inspection schedule needs a number of months, a number of days used, or “before each check-out”.');
+    if (sched.some((x) => x.kind === 'in_depth' && !numOrNull(x.everyMonths) && !numOrNull(x.everyDaysUsed) && !x.beforeEachCheckout))
+      return setError('Each in-depth inspection needs a number of months, a number of days used, or “on the day of each check-out”.');
 
     setBusy(true);
     try {
@@ -140,7 +140,9 @@ export function ProductFormPage() {
         <div className="sm:col-span-2">
           <p className="label">Inspection schedule</p>
           <p className="mb-2 text-xs text-stone-500">
-            Gear of this product is due when either limit is reached, whichever comes first. Usage (days used) is logged from kits and check-outs.{' '}
+            <b>In-service</b> checks are done by whoever is using the gear, every N days while it's in use (checked out or in a current kit) — idle gear
+            never comes due. <b>In-depth</b> inspections are routine checks by maintenance staff, due after N months or N days used, whichever comes
+            first.{' '}
             <Link className="link" to="/inspections/forms" target="_blank">
               Manage forms
             </Link>
@@ -148,8 +150,15 @@ export function ProductFormPage() {
           <div className="space-y-2">
             {schedules.map((sc, i) => {
               const set = (patch: Partial<ScheduleDraft>) => setSchedules((l) => l.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+              const inService = sc.kind === 'in_service';
               return (
-                <div key={i} className="grid items-end gap-2 rounded-lg border border-stone-200 p-3 sm:grid-cols-[1fr_6rem_6rem_6rem_auto]">
+                <div key={i} className="grid items-end gap-2 rounded-lg border border-stone-200 p-3 sm:grid-cols-[9rem_1fr_6rem_6rem_6rem_auto]">
+                  <Field label="Type">
+                    <Select value={sc.kind} onChange={(e) => set({ kind: e.target.value as ScheduleDraft['kind'] })} aria-label="Inspection type">
+                      <option value="in_service">In-service</option>
+                      <option value="in_depth">In-depth</option>
+                    </Select>
+                  </Field>
                   <Field label="Form">
                     <Select value={sc.formId} onChange={(e) => set({ formId: e.target.value })}>
                       <option value="">— Choose —</option>
@@ -162,27 +171,42 @@ export function ProductFormPage() {
                         ))}
                     </Select>
                   </Field>
-                  <Field label="Every (months)">
-                    <Input inputMode="numeric" value={sc.everyMonths} onChange={(e) => set({ everyMonths: e.target.value })} placeholder="12" />
-                  </Field>
-                  <Field label="or days used">
-                    <Input inputMode="numeric" value={sc.everyDaysUsed} onChange={(e) => set({ everyDaysUsed: e.target.value })} placeholder="—" />
-                  </Field>
-                  <Field label="Remind (days)">
-                    <Input inputMode="numeric" value={sc.reminderLeadDays} onChange={(e) => set({ reminderLeadDays: e.target.value })} placeholder={String(DEFAULT_LEAD_DAYS)} />
-                  </Field>
+                  {inService ? (
+                    <>
+                      <Field label="Every (days in use)" className="sm:col-span-3">
+                        <Input inputMode="numeric" className="sm:max-w-24" value={sc.everyDaysInUse} onChange={(e) => set({ everyDaysInUse: e.target.value })} placeholder="7" />
+                      </Field>
+                    </>
+                  ) : (
+                    <>
+                      <Field label="Every (months)">
+                        <Input inputMode="numeric" value={sc.everyMonths} onChange={(e) => set({ everyMonths: e.target.value })} placeholder="12" />
+                      </Field>
+                      <Field label="or days used">
+                        <Input inputMode="numeric" value={sc.everyDaysUsed} onChange={(e) => set({ everyDaysUsed: e.target.value })} placeholder="—" />
+                      </Field>
+                      <Field label="Remind (days)">
+                        <Input inputMode="numeric" value={sc.reminderLeadDays} onChange={(e) => set({ reminderLeadDays: e.target.value })} placeholder={String(DEFAULT_LEAD_DAYS)} />
+                      </Field>
+                    </>
+                  )}
                   <Button variant="ghost" className="text-red-700" aria-label="Remove schedule" onClick={() => setSchedules((l) => l.filter((_, j) => j !== i))}>
                     <Trash2 size={16} />
                   </Button>
-                  <div className="sm:col-span-5">
-                    <Checkbox label="Also required before each check-out" checked={sc.beforeEachCheckout} onChange={(e) => set({ beforeEachCheckout: e.target.checked })} />
+                  <div className="sm:col-span-6">
+                    <Checkbox label="Also required on the day of each check-out" checked={sc.beforeEachCheckout} onChange={(e) => set({ beforeEachCheckout: e.target.checked })} />
                   </div>
                 </div>
               );
             })}
-            <Button size="sm" onClick={() => setSchedules((l) => [...l, toDraft({ formId: '', everyMonths: 12 })])} disabled={!inspectionForms.size}>
-              <Plus size={14} /> Add inspection schedule
-            </Button>
+            <span className="flex gap-2">
+              <Button size="sm" onClick={() => setSchedules((l) => [...l, toDraft({ formId: '', kind: 'in_service', everyDaysInUse: 7 })])} disabled={!inspectionForms.size}>
+                <Plus size={14} /> In-service check
+              </Button>
+              <Button size="sm" onClick={() => setSchedules((l) => [...l, toDraft({ formId: '', kind: 'in_depth', everyMonths: 12 })])} disabled={!inspectionForms.size}>
+                <Plus size={14} /> In-depth inspection
+              </Button>
+            </span>
             {!inspectionForms.size && <p className="text-xs text-stone-500">Create an inspection form first.</p>}
           </div>
         </div>
@@ -206,6 +230,8 @@ export function ProductFormPage() {
 
 interface ScheduleDraft {
   formId: string;
+  kind: 'in_service' | 'in_depth';
+  everyDaysInUse: string;
   everyMonths: string;
   everyDaysUsed: string;
   reminderLeadDays: string;
@@ -217,6 +243,8 @@ const str = (n: number | null | undefined) => (n != null ? String(n) : '');
 function toDraft(s: InspectionSchedule): ScheduleDraft {
   return {
     formId: s.formId,
+    kind: s.kind ?? 'in_depth',
+    everyDaysInUse: str(s.everyDaysInUse),
     everyMonths: str(s.everyMonths),
     everyDaysUsed: str(s.everyDaysUsed),
     reminderLeadDays: str(s.reminderLeadDays),
@@ -225,8 +253,11 @@ function toDraft(s: InspectionSchedule): ScheduleDraft {
 }
 
 function fromDraft(d: ScheduleDraft): InspectionSchedule {
+  if (d.kind === 'in_service')
+    return { formId: d.formId, kind: 'in_service', everyDaysInUse: Math.max(1, Math.round(numOrNull(d.everyDaysInUse) ?? 1)), beforeEachCheckout: d.beforeEachCheckout };
   return {
     formId: d.formId,
+    kind: 'in_depth',
     everyMonths: numOrNull(d.everyMonths),
     everyDaysUsed: numOrNull(d.everyDaysUsed),
     reminderLeadDays: numOrNull(d.reminderLeadDays),

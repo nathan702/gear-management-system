@@ -1,6 +1,6 @@
 import { daysBetween } from './gear';
-import type { DueState } from './inspections';
-import type { Gear, GearList, IsoDate, Kit, ListLine, Product, Role } from './types';
+import type { DueState, InUse } from './inspections';
+import type { Checkout, Gear, GearList, IsoDate, Kit, ListLine, Product, Role } from './types';
 
 const MIN = '0000-01-01';
 const MAX = '9999-12-31';
@@ -140,4 +140,34 @@ export function fillFromList(
     result.set(line.id, { line, have, suggest, missing: Math.max(0, line.quantity - have.length - suggest.length) });
   }
   return list.lines.map((l) => result.get(l.id)!);
+}
+
+/**
+ * Which gear is in use today, and by whom: anything in a checked-out kit, an
+ * open check-out, or a planned kit whose dates include today.
+ */
+export function gearInUse(
+  kits: Pick<Kit, 'ownerId' | 'gearIds' | 'status' | 'startDate' | 'endDate' | 'checkedOutDate'>[],
+  checkouts: Pick<Checkout, 'gearId' | 'userId' | 'startDate' | 'status'>[],
+  today: IsoDate,
+): Map<string, InUse> {
+  const map = new Map<string, InUse>();
+  const add = (gearId: string, since: IsoDate, holder: string) => {
+    const cur = map.get(gearId);
+    if (!cur) map.set(gearId, { since, holderIds: [holder] });
+    else {
+      if (since < cur.since) cur.since = since;
+      if (!cur.holderIds.includes(holder)) cur.holderIds.push(holder);
+    }
+  };
+  for (const k of kits) {
+    const current =
+      k.status === 'checked_out' ||
+      (k.status === 'planned' && !!(k.startDate || k.endDate) && (!k.startDate || k.startDate <= today) && (!k.endDate || k.endDate >= today));
+    if (!current) continue;
+    const since = (k.status === 'checked_out' ? k.checkedOutDate : null) || k.startDate || today;
+    for (const g of k.gearIds) add(g, since > today ? today : since, k.ownerId);
+  }
+  for (const c of checkouts) if (c.status === 'out') add(c.gearId, c.startDate, c.userId);
+  return map;
 }

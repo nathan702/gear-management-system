@@ -1,11 +1,11 @@
 import { useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { ClipboardCheck, ClipboardList, Users } from 'lucide-react';
-import { responsibleInspectors, type DueState } from '@gear/shared';
+import { peopleForDue, type DueState, type InspectionKind } from '@gear/shared';
 import { useMe } from '../auth/AuthProvider';
 import { byName, sortedValues, useData } from '../data/DataProvider';
 import { Checkbox, Empty, LinkButton, PageHeader, Select, StatusBadge } from '../components/ui';
-import { DueBadge, dueText, useInspectionSummaries } from '../inspections/common';
+import { DueBadge, KindTag, dueText, useInUse, useInspectionSummaries } from '../inspections/common';
 import { useInspections } from '../inspections/useInspections';
 import { fmtDate, plural } from '../lib/format';
 
@@ -60,6 +60,8 @@ function DueList() {
   const state = (params.get('state') as DueState | null) ?? '';
   const program = params.get('program') ?? '';
   const location = params.get('location') ?? '';
+  const kind = (params.get('kind') as InspectionKind | null) ?? '';
+  const inUse = useInUse();
   const setP = (k: string, v: string) => {
     const n = new URLSearchParams(params);
     if (v) n.set(k, v);
@@ -73,21 +75,30 @@ function DueList() {
         .map((g) => {
           const s = summaries.get(g.id)!;
           const product = g.productId ? products.get(g.productId) : undefined;
-          return { g, s, who: responsibleInspectors(g, product, inspectionAssignments) };
+          const due = s.schedules.filter((x) => x.state !== 'ok' && (!kind || x.kind === kind));
+          const people = peopleForDue(s, g, product, inspectionAssignments, inUse.get(g.id));
+          const rowState: DueState | 'none' = due.some((x) => x.state === 'overdue') ? 'overdue' : due.length ? 'due_soon' : 'none';
+          return { g, due, rowState, who: [...new Set([...(kind !== 'in_depth' ? people.inService : []), ...(kind !== 'in_service' ? people.inDepth : [])])] };
         })
-        .filter(({ g, s, who }) => {
-          if (s.state !== 'overdue' && s.state !== 'due_soon') return false;
-          if (state && s.state !== state) return false;
-          if (mine && !who?.userIds.includes(uid)) return false;
+        .filter(({ g, due, rowState, who }) => {
+          if (!due.length) return false;
+          if (state && rowState !== state) return false;
+          if (mine && !who.includes(uid)) return false;
           if (program && g.programAreaId !== program) return false;
           if (location && g.locationId !== location) return false;
           return true;
         })
-        .sort((a, b) => (a.s.state === b.s.state ? (a.s.nextDueDate ?? '').localeCompare(b.s.nextDueDate ?? '') || byName(a.g, b.g) : a.s.state === 'overdue' ? -1 : 1)),
-    [gear, products, summaries, inspectionAssignments, mine, state, program, location, uid],
+        .sort((a, b) =>
+          a.rowState === b.rowState
+            ? (a.due[0]?.dueDate ?? '').localeCompare(b.due[0]?.dueDate ?? '') || byName(a.g, b.g)
+            : a.rowState === 'overdue'
+              ? -1
+              : 1,
+        ),
+    [gear, products, summaries, inspectionAssignments, inUse, mine, state, program, location, kind, uid],
   );
 
-  const overdue = rows.filter((r) => r.s.state === 'overdue').length;
+  const overdue = rows.filter((r) => r.rowState === 'overdue').length;
 
   return (
     <div>
@@ -96,6 +107,11 @@ function DueList() {
           <option value="">Overdue and due soon</option>
           <option value="overdue">Overdue only</option>
           <option value="due_soon">Due soon only</option>
+        </Select>
+        <Select className="w-auto" value={kind} onChange={(e) => setP('kind', e.target.value)} aria-label="Inspection type">
+          <option value="">In-service and in-depth</option>
+          <option value="in_service">In-service only</option>
+          <option value="in_depth">In-depth only</option>
         </Select>
         <Select className="w-auto" value={program} onChange={(e) => setP('program', e.target.value)} aria-label="Program area">
           <option value="">All programs</option>
@@ -131,8 +147,7 @@ function DueList() {
         </Empty>
       ) : (
         <ul className="card divide-y divide-stone-100">
-          {rows.map(({ g, s, who }) => {
-            const due = s.schedules.filter((x) => x.state !== 'ok');
+          {rows.map(({ g, due, rowState, who }) => {
             return (
               <li key={g.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
@@ -140,17 +155,18 @@ function DueList() {
                     <Link to={`/gear/${g.id}`} className="font-medium hover:underline">
                       {g.name}
                     </Link>
-                    <DueBadge state={s.state} short />
+                    <DueBadge state={rowState} short />
                     {g.status !== 'active' && <StatusBadge status={g.status} />}
                   </div>
                   <div className="text-xs text-stone-500">
                     {productLabel(g.productId)}
                     {g.locationId && ` · ${locations.get(g.locationId)?.name ?? ''}`}
-                    {who && ` · ${who.userIds.map((u) => users.get(u)?.displayName ?? '?').join(', ')}`}
+                    {who.length > 0 && ` · ${who.map((u) => users.get(u)?.displayName ?? '?').join(', ')}`}
                   </div>
                   <ul className="mt-1 text-xs text-stone-700">
                     {due.map((x) => (
-                      <li key={x.schedule.formId}>
+                      <li key={x.schedule.formId} className="flex items-center gap-1.5">
+                        <KindTag kind={x.kind} />
                         {inspectionForms.get(x.schedule.formId)?.name ?? 'Deleted form'}: {dueText(x)}
                       </li>
                     ))}

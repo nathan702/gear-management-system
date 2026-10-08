@@ -24,7 +24,7 @@ import { Button, Card, Dl, Field, LinkButton, Modal, PageHeader, StatusBadge, Te
 import { AddPhotoButton, PhotoGallery, usePhotos } from '../photos/PhotoGallery';
 import { fmtDate, fmtMoney, fmtTimestamp } from '../lib/format';
 import { notify } from '../components/toast';
-import { DueBadge, dueText, useInspectionSummaries } from '../inspections/common';
+import { DueBadge, KindTag, dueText, useInspectionSummaries } from '../inspections/common';
 import { useInspections } from '../inspections/useInspections';
 import { OverdueBadge, ReportIssueModal, SeverityBadge, WoStatusBadge, useGearWorkOrders } from '../workOrders/common';
 import { isOpen, workOrderNumber } from '@gear/shared';
@@ -247,6 +247,7 @@ export function GearDetailPage() {
                 {summary.schedules.map((s) => (
                   <li key={s.schedule.formId} className="flex items-center justify-between gap-2">
                     <span className="min-w-0">
+                      <KindTag kind={s.kind} />{' '}
                       <Link className="link" to={`/gear/${g.id}/inspect?form=${s.schedule.formId}`}>
                         {inspectionForms.get(s.schedule.formId)?.name ?? 'Deleted form'}
                       </Link>

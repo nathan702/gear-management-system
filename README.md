@@ -67,9 +67,11 @@ Any status change requires a reason, which is recorded in the history.
 
 ### Inspections
 
-- Products list the forms their gear needs and how often: every N months and/or every N days used — whichever comes first — plus how many days ahead it shows as *due soon* (default 14). Never-inspected gear counts from its first-use date (else purchase date, else when it was added).
+- Products list the forms their gear needs and how often. There are two kinds of schedule:
+  - **In-service checks** (e.g. a daily or weekly pre-use check) are done by **whoever is using the gear** — anyone with it checked out or in a kit that's current today. The interval only counts days the gear is in use: gear that sits on the shelf for a month needs no check, and is due on the first day it goes back out; gear in use every day is due every N days. In-service checks never block adding gear to a kit.
+  - **In-depth inspections** (e.g. annual) are done by the **inspectors assigned** under *Who inspects what* (typically the same people who handle work orders): every N months and/or every N days used — whichever comes first — plus how many days ahead it shows as *due soon* (default 14). Never-inspected gear counts from its first-use date (else purchase date, else when it was added). An overdue in-depth inspection blocks the gear from kits.
 - Anyone can inspect, including offline. Submitting writes the inspection; the `applyInspection` Cloud Function then works out the result — the **worst failure outcome** among failed items (*Note only* failures count as Active), or the inspector's **override** (which needs a reason) — and applies it only if it is **worse** than the gear's current status. Inspections never clear a problem: only closing a work order returns gear to Active (phase 3). Retired gear isn't changed. A late-syncing older inspection still applies any problem it found but doesn't replace the newer inspection as the latest.
-- *Inspections → Due* lists overdue and due-soon gear, filterable to *Assigned to me*. Reminders are sent in phase 5.
+- *Inspections → Due* lists overdue and due-soon gear, filterable by type and to *Assigned to me* (in-service checks on gear you have out, in-depth inspections assigned to you).
 - Starter forms are built from the Gear Register's checklists (*Inspection forms → Add starter forms*, or `npm run seed`).
 
 ### Work orders and gear status
@@ -96,7 +98,7 @@ Everyone picks, on their profile page, which of these they get by email and/or S
 
 | Event | Who | Default |
 |---|---|---|
-| Daily reminders | Inspectors assigned to the gear and anyone with it in a kit that's current or starts within 14 days (inspections overdue / due soon); assignees of work orders overdue or due within 3 days | Email |
+| Daily reminders | In-service checks due: whoever has the gear checked out or in a current kit. In-depth inspections overdue / due soon: the inspectors assigned to the gear. Work orders overdue or due within 3 days: their assignees | Email |
 | Manager summary | Managers and admins: all overdue inspections and work orders, unassigned work orders | Email |
 | Work order assigned to you | The assignee | Email + Slack |
 | New work orders | Managers (opt-in) | Off |

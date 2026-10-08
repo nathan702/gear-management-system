@@ -93,17 +93,29 @@ export interface Manufacturer extends Stamped {
   active: boolean;
 }
 
+export const INSPECTION_KINDS = ['in_service', 'in_depth'] as const;
 /**
- * When a product's gear must be inspected with a given form. Due when either
- * limit is reached, whichever comes first. One schedule per form per product.
+ * in_service: quick checks by whoever is using the gear, every N days while
+ * it's in use (checked out or in a current kit). Idle gear never comes due;
+ * it's due as soon as it's used again once the interval has passed.
+ * in_depth: routine inspections by maintenance staff on a calendar and/or
+ * days-used basis, assigned under "Who inspects what".
  */
+export type InspectionKind = (typeof INSPECTION_KINDS)[number];
+
+/** When a product's gear must be inspected with a given form. One schedule per form per product. */
 export interface InspectionSchedule {
   formId: string;
+  /** Missing on older schedules, which are in-depth. */
+  kind?: InspectionKind;
+  /** in_service: every N days the gear is in use (1 = daily, 7 = weekly). */
+  everyDaysInUse?: number | null;
+  /** in_depth: every N months and/or every N days used, whichever comes first. */
   everyMonths?: number | null;
   everyDaysUsed?: number | null;
-  /** Show as "due soon" (and remind) this many days ahead. Default 14. */
+  /** in_depth: show as "due soon" (and remind) this many days ahead. Default 14. */
   reminderLeadDays?: number | null;
-  /** Phase 4: require this inspection before each check-out. */
+  /** Require this inspection on the day of each check-out. */
   beforeEachCheckout?: boolean;
 }
 

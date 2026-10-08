@@ -5,11 +5,11 @@ import { useMe } from '../auth/AuthProvider';
 import { byName, useData } from '../data/DataProvider';
 import { Card, Empty, LinkButton, StatusBadge } from '../components/ui';
 import { fmtMoney, fmtTimestamp, plural } from '../lib/format';
-import { useInspectionSummaries } from '../inspections/common';
+import { useInUse, useInspectionSummaries } from '../inspections/common';
 import { KitStatusBadge } from '../kits/common';
 import { kitDates } from './KitsPage';
 import { kitIsLive } from '@gear/shared';
-import { isOverdue, responsibleInspectors, todayIso } from '@gear/shared';
+import { isOverdue, peopleForDue, todayIso } from '@gear/shared';
 
 const TILE: Record<GearStatus, string> = {
   active: 'border-brand-200 bg-brand-50 text-brand-900',
@@ -28,11 +28,15 @@ export function HomePage() {
   const woOverdue = wos.filter((w) => isOverdue(w, todayIso())).length;
   const woMine = wos.filter((w) => w.assigneeId === uid).length;
   const summaries = useInspectionSummaries();
+  const inUse = useInUse();
   const dueCount = (state: 'overdue' | 'due_soon', mineOnly = false) =>
     [...gear.values()].filter(
       (g) =>
         summaries.get(g.id)?.state === state &&
-        (!mineOnly || responsibleInspectors(g, g.productId ? products.get(g.productId) : null, inspectionAssignments)?.userIds.includes(uid)),
+        (!mineOnly ||
+          Object.values(peopleForDue(summaries.get(g.id)!, g, g.productId ? products.get(g.productId) : null, inspectionAssignments, inUse.get(g.id)))
+            .flat()
+            .includes(uid)),
     ).length;
   const mineDue = dueCount('overdue', true) + dueCount('due_soon', true);
   const all = [...gear.values()];
@@ -89,7 +93,7 @@ export function HomePage() {
         <Link to="/inspections?mine=1" className="col-span-2 flex items-center justify-between rounded-xl border border-stone-200 bg-white p-4 transition hover:shadow-sm">
           <span>
             <span className="block text-sm font-medium">Assigned to you</span>
-            <span className="block text-xs text-stone-600">Overdue or due soon on gear you look after</span>
+            <span className="block text-xs text-stone-600">In-service checks on gear you have out, and in-depth ones assigned to you</span>
           </span>
           <span className="text-3xl font-semibold tabular-nums">{mineDue}</span>
         </Link>

@@ -155,7 +155,14 @@ async function seedDemo(
     const [formName, months, days] = scheduleFor[key];
     const formId = form(formName);
     productForm[key] = formId;
-    const inspectionSchedules = formId ? [{ formId, everyMonths: months, everyDaysUsed: days, reminderLeadDays: 14, beforeEachCheckout: false }] : [];
+    // Routine in-depth inspection by maintenance staff, plus a quick
+    // in-service check by whoever is using it (daily for PPE, weekly otherwise).
+    const preUse = form('Pre-use');
+    const inService = ['pfd', 'helmet', 'harness'].includes(key) ? 1 : 7;
+    const inspectionSchedules = [
+      ...(formId ? [{ formId, kind: 'in_depth', everyMonths: months, everyDaysUsed: days, reminderLeadDays: 14, beforeEachCheckout: false }] : []),
+      ...(preUse ? [{ formId: preUse, kind: 'in_service', everyDaysInUse: inService, beforeEachCheckout: false }] : []),
+    ];
     await ref.set({ ...p, notes: '', links: [], inspectionSchedules, active: true, ...stamp() });
     productIds[key] = ref.id;
   }
