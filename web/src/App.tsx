@@ -21,6 +21,12 @@ import { ScanPage } from './pages/ScanPage';
 import { QrResolvePage } from './pages/QrResolvePage';
 import { LabelsPage } from './pages/LabelsPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { InspectionsPage } from './pages/InspectionsPage';
+import { InspectionFormsPage } from './pages/InspectionFormsPage';
+import { InspectionFormEditPage } from './pages/InspectionFormEditPage';
+import { InspectionDetailPage } from './pages/InspectionDetailPage';
+import { InspectPage } from './pages/InspectPage';
+import { AssignmentsPage } from './pages/AssignmentsPage';
 
 function SignedInApp() {
   const { uid } = useMe();
@@ -35,6 +41,13 @@ function SignedInApp() {
             <Route path="gear/new" element={<Manager><GearFormPage /></Manager>} />
             <Route path="gear/:id" element={<GearDetailPage />} />
             <Route path="gear/:id/edit" element={<Manager><GearFormPage /></Manager>} />
+            <Route path="gear/:id/inspect" element={<InspectPage />} />
+            <Route path="inspections" element={<InspectionsPage />} />
+            <Route path="inspections/forms" element={<InspectionFormsPage />} />
+            <Route path="inspections/forms/new" element={<Manager><InspectionFormEditPage /></Manager>} />
+            <Route path="inspections/forms/:id" element={<InspectionFormEditPage />} />
+            <Route path="inspections/assignments" element={<Manager><AssignmentsPage /></Manager>} />
+            <Route path="inspections/:id" element={<InspectionDetailPage />} />
             <Route path="products" element={<ProductsPage />} />
             <Route path="products/new" element={<Manager><ProductFormPage /></Manager>} />
             <Route path="products/:id" element={<ProductDetailPage />} />

@@ -140,6 +140,13 @@ export const SEED_CHECKLISTS: Record<string, string[]> = {
     'Size and rating label legible',
     'Fit and buoyancy check done',
   ],
+  Hull: [
+    'Hull free of cracks, holes or deep gouges',
+    'Seat, footpegs and bulkheads secure',
+    'Grab handles and deck lines sound',
+    'Drain plug and hatches seal',
+    'Buoyancy fitted where required',
+  ],
   Inflatable: [
     'Tubes hold pressure overnight, no leaks',
     'Valves seat and seal',

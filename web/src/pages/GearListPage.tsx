@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { Plus, Printer, Search } from 'lucide-react';
-import { GEAR_STATUSES, STATUS_LABELS, type Gear, type WithId } from '@gear/shared';
+import { GEAR_STATUSES, STATUS_LABELS, type DueState, type Gear, type WithId } from '@gear/shared';
 import { useMe } from '../auth/AuthProvider';
 import { byName, sortedValues, useData } from '../data/DataProvider';
 import { Button, Empty, Input, LinkButton, PageHeader, Select, StatusBadge } from '../components/ui';
 import { plural } from '../lib/format';
+import { DueBadge, useInspectionSummaries } from '../inspections/common';
 
 export function GearListPage() {
   const { isManager } = useMe();
@@ -14,6 +15,7 @@ export function GearListPage() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const summaries = useInspectionSummaries();
 
   const f = {
     q: params.get('q') ?? '',
@@ -22,6 +24,7 @@ export function GearListPage() {
     location: params.get('location') ?? '',
     category: params.get('category') ?? '',
     product: params.get('product') ?? '',
+    inspection: params.get('inspection') ?? '',
   };
   const setF = (key: keyof typeof f, value: string) => {
     const next = new URLSearchParams(params);
@@ -42,6 +45,8 @@ export function GearListPage() {
         if (f.program && g.programAreaId !== f.program) return false;
         if (f.location && g.locationId !== f.location) return false;
         if (f.product && g.productId !== f.product) return false;
+        if (f.inspection === 'attention' && !['overdue', 'due_soon'].includes(summaries.get(g.id)?.state ?? '')) return false;
+        if ((f.inspection === 'overdue' || f.inspection === 'due_soon') && summaries.get(g.id)?.state !== f.inspection) return false;
         const product = g.productId ? products.get(g.productId) : undefined;
         if (f.category && product?.categoryId !== f.category) return false;
         if (q) {
@@ -61,7 +66,7 @@ export function GearListPage() {
       })
       .sort(byName);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gear, products, locations, params]);
+  }, [gear, products, locations, params, summaries]);
 
   const allSelected = list.length > 0 && list.every((g) => selected.has(g.id));
   const toggle = (id: string) =>
@@ -89,7 +94,7 @@ export function GearListPage() {
         }
       />
 
-      <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+      <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
         <div className="relative sm:col-span-2">
           <Search size={16} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-stone-400" />
           <Input
@@ -109,6 +114,12 @@ export function GearListPage() {
             </option>
           ))}
           <option value="all">All statuses</option>
+        </Select>
+        <Select value={f.inspection} onChange={(e) => setF('inspection', e.target.value)} aria-label="Inspection">
+          <option value="">Any inspection state</option>
+          <option value="attention">Overdue or due soon</option>
+          <option value="overdue">Inspection overdue</option>
+          <option value="due_soon">Inspection due soon</option>
         </Select>
         <Select value={f.program} onChange={(e) => setF('program', e.target.value)} aria-label="Program area">
           <option value="">All programs</option>
@@ -190,7 +201,7 @@ export function GearListPage() {
               </thead>
               <tbody className="divide-y divide-stone-100">
                 {list.map((g) => (
-                  <GearRow key={g.id} g={g} checked={selected.has(g.id)} onToggle={() => toggle(g.id)}>
+                  <GearRow key={g.id} g={g} due={summaries.get(g.id)?.state ?? 'none'} checked={selected.has(g.id)} onToggle={() => toggle(g.id)}>
                     <td className="px-3 py-2 text-stone-700">{productLabel(g.productId) || '—'}</td>
                     <td className="px-3 py-2 text-stone-700">{name(programAreas, g.programAreaId)}</td>
                     <td className="px-3 py-2 text-stone-700">{name(locations, g.locationId)}</td>
@@ -208,7 +219,10 @@ export function GearListPage() {
                 <Link to={`/gear/${g.id}`} className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate font-medium">{g.name}</span>
-                    <StatusBadge status={g.status} />
+                    <span className="flex shrink-0 gap-1">
+                      <DueBadge state={summaries.get(g.id)?.state ?? 'none'} short />
+                      <StatusBadge status={g.status} />
+                    </span>
                   </div>
                   <div className="truncate text-xs text-stone-500">
                     {productLabel(g.productId) || 'No product'} · {name(locations, g.locationId)}
@@ -223,7 +237,19 @@ export function GearListPage() {
   );
 }
 
-function GearRow({ g, checked, onToggle, children }: { g: Gear & WithId; checked: boolean; onToggle(): void; children: React.ReactNode }) {
+function GearRow({
+  g,
+  due,
+  checked,
+  onToggle,
+  children,
+}: {
+  g: Gear & WithId;
+  due: DueState | 'none';
+  checked: boolean;
+  onToggle(): void;
+  children: React.ReactNode;
+}) {
   const navigate = useNavigate();
   return (
     <tr className="cursor-pointer hover:bg-stone-50" onClick={() => navigate(`/gear/${g.id}`)}>
@@ -238,7 +264,10 @@ function GearRow({ g, checked, onToggle, children }: { g: Gear & WithId; checked
       </td>
       {children}
       <td className="px-3 py-2">
-        <StatusBadge status={g.status} />
+        <span className="flex flex-wrap gap-1">
+          <StatusBadge status={g.status} />
+          <DueBadge state={due} short />
+        </span>
       </td>
     </tr>
   );

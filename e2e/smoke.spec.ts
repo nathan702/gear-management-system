@@ -56,7 +56,8 @@ test('admin: browse, change status, photo, labels, QR lookup, import', async ({ 
 
   // QR lookup: known code redirects, unknown offers to attach
   await page.goto('/gear?q=raft%202');
-  const code = (await page.locator('tbody tr td .font-mono').first().textContent())!.trim();
+  const row = page.locator('tbody tr', { has: page.getByRole('link', { name: 'Raft 2', exact: true }) });
+  const code = (await row.locator('.font-mono').first().textContent())!.trim();
   await page.goto(`/q/${code.toLowerCase()}`);
   await expect(page.getByRole('heading', { name: /Raft 2/ })).toBeVisible();
   await page.goto('/q/TAG-0042');
@@ -72,7 +73,7 @@ test('admin: browse, change status, photo, labels, QR lookup, import', async ({ 
   await page.goto('/admin/import-export');
   await page.getByLabel('Create missing program areas').check();
   const csv = `name,qr_code,location,status,purchase_date\nCanoe 1,,Boat shed,active,4/1/2024\n,TAG-0042,Fraser,,\n`;
-  await page.locator('input[type=file]').setInputFiles({ name: 'gear.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
+  await page.locator('section', { hasText: 'What are you importing?' }).locator('input[type=file]').setInputFiles({ name: 'gear.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
   await expect(page.getByText('1 new', { exact: true })).toBeVisible();
   await expect(page.getByText('1 updates')).toBeVisible();
   await expect(page.getByText(/Syncing changes/)).toHaveCount(0, { timeout: 10_000 });

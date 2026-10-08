@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
-import { ArrowRightLeft, Pencil, Printer, Trash2 } from 'lucide-react';
+import { ArrowRightLeft, ClipboardCheck, Pencil, Printer, Trash2 } from 'lucide-react';
 import QRCode from 'qrcode';
 import {
   GEAR_STATUSES,
@@ -24,17 +24,21 @@ import { Button, Card, Dl, Field, LinkButton, Modal, PageHeader, StatusBadge, Te
 import { AddPhotoButton, PhotoGallery, usePhotos } from '../photos/PhotoGallery';
 import { fmtDate, fmtMoney, fmtTimestamp } from '../lib/format';
 import { notify } from '../components/toast';
+import { DueBadge, dueText, useInspectionSummaries } from '../inspections/common';
+import { useInspections } from '../inspections/useInspections';
 
 export function GearDetailPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const { uid, isManager, isAdmin } = useMe();
-  const { gear, products, categories, programAreas, locations, users, settings, productLabel } = useData();
+  const { gear, products, categories, programAreas, locations, users, settings, inspectionForms, productLabel } = useData();
   const g = gear.get(id);
   const photos = usePhotos('gearId', id);
   const [history, setHistory] = useState<(StatusChange & WithId)[]>([]);
   const [qr, setQr] = useState<string>('');
   const [statusOpen, setStatusOpen] = useState(false);
+  const summary = useInspectionSummaries().get(id);
+  const inspections = useInspections({ gearId: id, max: 20 });
 
   useEffect(
     () =>
@@ -84,6 +88,11 @@ export function GearDetailPage() {
         }
         actions={
           <>
+            {g.status !== 'retired' && (
+              <LinkButton to={`/gear/${g.id}/inspect`} variant="primary">
+                <ClipboardCheck size={16} /> Inspect
+              </LinkButton>
+            )}
             <AddPhotoButton links={{ gearId: g.id }} />
             {isManager && (
               <>
@@ -178,6 +187,49 @@ export function GearDetailPage() {
                 <p className="mt-1 text-stone-600">Scanning opens this page.</p>
               </div>
             </div>
+          </Card>
+
+          <Card title="Inspections" actions={summary && <DueBadge state={summary.state} />}>
+            {summary && summary.schedules.length > 0 ? (
+              <ul className="mb-4 space-y-2 text-sm">
+                {summary.schedules.map((s) => (
+                  <li key={s.schedule.formId} className="flex items-center justify-between gap-2">
+                    <span className="min-w-0">
+                      <Link className="link" to={`/gear/${g.id}/inspect?form=${s.schedule.formId}`}>
+                        {inspectionForms.get(s.schedule.formId)?.name ?? 'Deleted form'}
+                      </Link>
+                      <span className="block text-xs text-stone-500">
+                        {s.lastDate ? `Last ${fmtDate(s.lastDate)}` : 'Never inspected'}
+                        {dueText(s) && ` · ${dueText(s)}`}
+                      </span>
+                    </span>
+                    <DueBadge state={s.state} short />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mb-4 text-sm text-stone-500">
+                {g.status === 'retired' ? 'Retired gear isn’t inspected.' : 'No inspection schedule for this product.'}
+              </p>
+            )}
+            {inspections && inspections.length > 0 && (
+              <ul className="divide-y divide-stone-100 border-t border-stone-100 text-sm">
+                {inspections.map((i) => (
+                  <li key={i.id}>
+                    <Link to={`/inspections/${i.id}`} className="flex items-center justify-between gap-2 py-2 hover:bg-stone-50">
+                      <span className="min-w-0">
+                        <span className="block truncate">{i.formName}</span>
+                        <span className="block text-xs text-stone-500">
+                          {fmtDate(i.date)} · {userName(i.inspectorId)}
+                          {i.failedCount > 0 && ` · ${i.failedCount} failed`}
+                        </span>
+                      </span>
+                      <StatusBadge status={i.override?.status ?? i.calculatedStatus} />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
 
           <Card title="Status history">
