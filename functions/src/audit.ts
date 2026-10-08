@@ -44,3 +44,5 @@ export const auditManufacturers = auditTrigger('manufacturers');
 export const auditInspectionForms = auditTrigger('inspectionForms');
 export const auditInspectionAssignments = auditTrigger('inspectionAssignments');
 export const auditWorkOrderRules = auditTrigger('workOrderRules');
+export const auditLists = auditTrigger('lists');
+export const auditKits = auditTrigger('kits');

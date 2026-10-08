@@ -12,8 +12,8 @@ with no signal.
 | 1. Foundation | Sign-in & roles, reference data, products, gear, QR codes & labels, photos, import/export, offline | **Built** |
 | 2. Inspections | Form builder, inspections (offline), failure outcomes, overrides, time/usage schedules, who-inspects-what | **Built** |
 | 3. Work orders | One open work order per gear from failed inspections (later failures added to it), issue reports, manual work orders, assignment rules, close → back to Active | **Built** |
-| 4. Kits, lists, check-outs | Date-conflict checks, build kits from lists, days-used logging | Next |
-| 5. Notifications | Per-user email/Slack preferences, admin channel routing, reminders | |
+| 4. Kits, lists, check-outs | Lists of products/categories, kits with dates and no double-booking, fill from list, scan to add, check-out/return with days used, single-item check-outs, usage logging | **Built** |
+| 5. Notifications | Per-user email/Slack preferences, admin channel routing, reminders | Next |
 | 6. Reporting | Usage, inspection completion, inventory, age, replacement budget forecast | |
 
 ## Stack
@@ -52,6 +52,10 @@ e2e/         Playwright browser tests (run against the emulators)
 | `workOrders` | Number (WO-0001, assigned by a function), gear, title, description, source (*inspection* / *issue* / *manual*), severity, status (Open → In progress / Waiting on parts → Done / Cancelled), priority, assignee, due date, linked inspections, resolution, cost, labor hours. |
 | `workOrders/{id}/log` | Activity: creation, each inspection added, status / assignee / due changes (functions) and people's notes. |
 | `workOrderRules` | Admin settings: match severity, program area, category and/or location → assignee, due in N days, priority. First match by order wins. |
+| `lists` | Name, program area, lines (a product *or* any product in a category, with a quantity and notes). |
+| `kits` | Name, owner, program area, optional start/end dates, source list, gear ids, status (Planned → Checked out → Returned). |
+| `checkouts` | A single item checked out outside a kit: who, from, due back, returned. |
+| `usageLogs` | Days (and optional uses) a piece of gear was actually used. Permanent; a function adds them to `gear.stats`, which drives usage-based inspection schedules. |
 | `settings/app` | Org name, auto-join domains, QR link base URL, label template and printer offsets. |
 | `auditLog` | Who changed which fields of which record, when. |
 
@@ -75,17 +79,28 @@ Gear status only gets worse through inspections and issue reports, and only gets
 - **Closing** — the assignee or a manager completes a work order with what was done (plus cost and hours); managers can cancel. The gear then becomes the worst severity among its *other* open work orders, or **Active** when none remain. This is the only way gear returns to Active. Reopening a work order flags the gear again.
 - Managers can still **retire** gear by hand; admins can set gear with no open work orders back to Active (e.g. to fix imported data).
 
+### Kits, lists and usage
+
+- **Lists** (managers) say what an activity needs: specific products or “any” of a category, with quantities.
+- **Kits** are the actual gear someone takes. Anyone can build their own (optionally from a list, which then shows what's still missing and suggests available gear); admins can build them for others; everyone can see every kit. Gear can be in several kits only if their dates don't overlap — a kit without dates holds its gear until it's returned.
+- Adding gear checks it: **retired gear and double-booking are never allowed**; **quarantined gear or gear with an overdue inspection** is blocked for everyone except admins, who get a warning and can add it anyway. Gear with issues or an inspection due soon shows a warning.
+- **Check out / return** — checking a kit out flags anything not ready (and any product set to need an inspection *before each check-out* that hasn't had one today). Returning asks how many days each item was actually used.
+- Single items can be **checked out** from their gear page too, and use outside kits can be **logged** directly. Days used feed the *every N days used* inspection schedules.
+
 ## Roles
 
 | | Admin | Manager | Staff | Technician |
 |---|:-:|:-:|:-:|:-:|
 | View gear, products, scan, add photos, inspect (incl. override with reason), report issues, comment on work orders | ✓ | ✓ | ✓ | ✓ |
 | Work through work orders assigned to them (start, waiting on parts, complete) | ✓ | ✓ | ✓ | ✓ |
+| Build, check out, return and delete their own kits; check out single items; log usage | ✓ | ✓ | ✓ | ✓ |
+| Create and edit lists | ✓ | ✓ | | |
+| Manage other people's kits; add quarantined/overdue gear to kits (with a warning) | ✓ | | | |
 | Create, edit, assign, cancel and reopen any work order; retire gear | ✓ | ✓ | | |
 | Add/edit gear & products, change status, reference data, inspection forms & assignments, import/export | ✓ | ✓ | | |
 | Users, invitations, settings, work order assignment rules, delete records, set gear back to Active directly | ✓ | | | |
 
-Kit permissions arrive in phase 4. Admins can delete inspection and work order records (the gear's status isn't rolled back). Technicians land on *Work orders → Assigned to me*, and their phone menu shows Work orders instead of Inspections.
+Admins can delete inspection and work order records (the gear's status isn't rolled back). Technicians land on *Work orders → Assigned to me*, and their phone menu shows Work orders instead of Inspections.
 
 ## Local development
 
@@ -150,4 +165,4 @@ A separate production project (and a `production` branch/workflow) can be added 
 Rows with an `id` (from an export) update that record; others are matched by QR code (gear), manufacturer + model + variant (products), email (users) or name (everything else).
 Only columns present in the file change, and blank cells clear optional fields. New users become invitations.
 
-Inspection forms import/export one row per item (`form`, `prompt`, `type`, `failure_outcome`, `required`, `min`, `max`, `unit`, `help`); importing a form with an existing name saves a new version of it. The full inspection log and all work orders export to CSV or Excel, and all three are included in the *Everything* workbook.
+Inspection forms import/export one row per item (`form`, `prompt`, `type`, `failure_outcome`, `required`, `min`, `max`, `unit`, `help`); importing a form with an existing name saves a new version of it. The full inspection log, work orders, kits and the usage log export to CSV or Excel; lists import and export one row per line. All of them are included in the *Everything* workbook.

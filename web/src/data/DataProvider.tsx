@@ -16,6 +16,9 @@ import {
   type WithId,
   type WorkOrder,
   type WorkOrderRule,
+  type GearList,
+  type Kit,
+  type Checkout,
   OPEN_WORK_ORDER_STATUSES,
 } from '@gear/shared';
 import { db } from '../firebase';
@@ -39,6 +42,10 @@ export interface Data {
   /** Open, in-progress and waiting work orders (closed ones are queried on demand). */
   openWorkOrders: Map<string, WorkOrder & WithId>;
   workOrderRules: (WorkOrderRule & WithId)[];
+  lists: Map<string, GearList & WithId>;
+  kits: Map<string, Kit & WithId>;
+  /** Gear currently checked out on its own (not in a kit). */
+  openCheckouts: Map<string, Checkout & WithId>;
   settings: AppSettings;
   productLabel(id: string | null | undefined): string;
   /** True while there are writes made offline that haven't reached the server. */
@@ -59,6 +66,9 @@ const COLLECTIONS = [
   'inspectionAssignments',
   'workOrderRules',
   'openWorkOrders',
+  'lists',
+  'kits',
+  'openCheckouts',
 ] as const;
 type CollectionKey = (typeof COLLECTIONS)[number];
 
@@ -72,7 +82,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       onSnapshot(
         key === 'openWorkOrders'
           ? query(collection(db, 'workOrders'), where('status', 'in', [...OPEN_WORK_ORDER_STATUSES]))
-          : collection(db, key),
+          : key === 'openCheckouts'
+            ? query(collection(db, 'checkouts'), where('status', '==', 'out'))
+            : collection(db, key),
         { includeMetadataChanges: true },
         (snap) => {
           setMaps((m) => ({ ...m, [key]: new Map(snap.docs.map((d) => [d.id, { id: d.id, ...d.data() }])) }));
@@ -106,6 +118,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       inspectionAssignments: [...get<InspectionAssignment>('inspectionAssignments').values()],
       openWorkOrders: get<WorkOrder>('openWorkOrders'),
       workOrderRules: [...get<WorkOrderRule>('workOrderRules').values()].sort((a, b) => a.order - b.order),
+      lists: get<GearList>('lists'),
+      kits: get<Kit>('kits'),
+      openCheckouts: get<Checkout>('openCheckouts'),
       settings,
       productLabel: (id) => (id ? productName(products.get(id), manufacturers) || 'Unknown product' : ''),
       pendingWrites: Object.values(pending).some(Boolean),

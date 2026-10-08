@@ -12,4 +12,5 @@ export { gearStatusHistory } from './gear';
 export { deletePhotoFiles } from './photos';
 export { applyInspection } from './inspections';
 export { onWorkOrderCreated, onWorkOrderUpdated } from './workOrders';
+export { onUsageLogged } from './usage';
 export * from './audit';

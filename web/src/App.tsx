@@ -31,6 +31,9 @@ import { WorkOrdersPage } from './pages/WorkOrdersPage';
 import { WorkOrderDetailPage } from './pages/WorkOrderDetailPage';
 import { WorkOrderNewPage } from './pages/WorkOrderNewPage';
 import { WorkOrderRulesPage } from './pages/WorkOrderRulesPage';
+import { KitsPage } from './pages/KitsPage';
+import { KitPage } from './pages/KitPage';
+import { ListsPage, ListEditPage } from './pages/ListsPage';
 
 function SignedInApp() {
   const { uid } = useMe();
@@ -56,6 +59,12 @@ function SignedInApp() {
             <Route path="work-orders/new" element={<Manager><WorkOrderNewPage /></Manager>} />
             <Route path="work-orders/rules" element={<Admin><WorkOrderRulesPage /></Admin>} />
             <Route path="work-orders/:id" element={<WorkOrderDetailPage />} />
+            <Route path="kits" element={<KitsPage />} />
+            <Route path="kits/new" element={<KitPage />} />
+            <Route path="kits/:id" element={<KitPage />} />
+            <Route path="lists" element={<ListsPage />} />
+            <Route path="lists/new" element={<Manager><ListEditPage /></Manager>} />
+            <Route path="lists/:id" element={<ListEditPage />} />
             <Route path="products" element={<ProductsPage />} />
             <Route path="products/new" element={<Manager><ProductFormPage /></Manager>} />
             <Route path="products/:id" element={<ProductDetailPage />} />

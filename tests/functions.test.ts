@@ -51,7 +51,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   const db = getFirestore(admin);
-  for (const c of ['users', 'invites', 'gear', 'qrCodes', 'inspections', 'workOrders', 'workOrderRules', 'counters']) await db.recursiveDelete(db.collection(c));
+  for (const c of ['users', 'invites', 'gear', 'qrCodes', 'inspections', 'workOrders', 'workOrderRules', 'counters', 'usageLogs']) await db.recursiveDelete(db.collection(c));
 });
 
 describe('activateAccount', () => {
@@ -259,5 +259,20 @@ describe('work orders', () => {
     await fdb().doc('workOrders/x1').update({ status: 'open', updatedBy: 'mgr' });
     await waitFor(async () => (await gearData()).status === 'quarantined');
     expect((await woData('x1')).closedAt).toBeNull();
+  });
+});
+
+describe('onUsageLogged', () => {
+  it('adds days and uses to the gear, once per log', async () => {
+    const db = getFirestore(admin);
+    await db.doc('gear/g9').set({ name: 'Kayak 9', status: 'active', qrCode: 'CG-USE001', stats: { daysUsed: 10 } });
+    await db.doc('usageLogs/u1').set({ gearId: 'g9', userId: 'u', startDate: '2026-06-01', endDate: '2026-06-05', daysUsed: 5, uses: 3 });
+    await db.doc('usageLogs/u2').set({ gearId: 'g9', userId: 'u', startDate: '2026-05-01', endDate: '2026-05-02', daysUsed: 2 });
+    const stats = await waitFor(async () => {
+      const s = (await db.doc('gear/g9').get()).get('stats');
+      return s?.daysUsed === 17 && s;
+    });
+    expect(stats).toEqual({ daysUsed: 17, uses: 3, lastUsedDate: '2026-06-05' });
+    expect((await db.doc('usageLogs/u1').get()).get('processedAt')).toBeTruthy();
   });
 });

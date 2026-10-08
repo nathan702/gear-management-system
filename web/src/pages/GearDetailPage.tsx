@@ -28,6 +28,7 @@ import { DueBadge, dueText, useInspectionSummaries } from '../inspections/common
 import { useInspections } from '../inspections/useInspections';
 import { OverdueBadge, ReportIssueModal, SeverityBadge, WoStatusBadge, useGearWorkOrders } from '../workOrders/common';
 import { isOpen, workOrderNumber } from '@gear/shared';
+import { GearUsageCard } from '../kits/GearUsageCard';
 
 export function GearDetailPage() {
   const { id = '' } = useParams();
@@ -198,6 +199,8 @@ export function GearDetailPage() {
               </div>
             </div>
           </Card>
+
+          <GearUsageCard gear={g} />
 
           <Card
             title={`Work orders${openWos.length ? ` (${openWos.length} open)` : ''}`}

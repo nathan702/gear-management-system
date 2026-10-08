@@ -6,3 +6,5 @@ export * from './importExport';
 export * from './inspections';
 export * from './inspectionIO';
 export * from './workOrders';
+export * from './kits';
+export * from './kitIO';

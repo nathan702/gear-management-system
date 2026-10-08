@@ -167,6 +167,7 @@ export interface FormInspectionState {
 export interface GearStats {
   daysUsed?: number;
   uses?: number;
+  lastUsedDate?: IsoDate | null;
 }
 
 /** gear/{gearId}/statusHistory/{id} — written by Cloud Functions only. */
@@ -369,4 +370,69 @@ export interface WorkOrderRule extends Stamped {
   assigneeId: string | null;
   dueInDays: number | null;
   priority: Priority;
+}
+
+/* ------------------------------------------------------- lists and kits */
+
+/** One line of a list: a specific product, or any product in a category. */
+export interface ListLine {
+  id: string;
+  productId?: string | null;
+  categoryId?: string | null;
+  quantity: number;
+  notes?: string;
+}
+
+/** A reusable list of what an activity needs, e.g. "Day raft trip, 6 guests". */
+export interface GearList extends Stamped {
+  name: string;
+  description?: string;
+  programAreaId: string | null;
+  lines: ListLine[];
+  active: boolean;
+}
+
+export const KIT_STATUSES = ['planned', 'checked_out', 'returned'] as const;
+export type KitStatus = (typeof KIT_STATUSES)[number];
+
+/** Specific pieces of gear someone is using, optionally between two dates. */
+export interface Kit extends Stamped {
+  name: string;
+  ownerId: string;
+  programAreaId: string | null;
+  /** Both optional; a missing date is open-ended. */
+  startDate: IsoDate | null;
+  endDate: IsoDate | null;
+  notes?: string;
+  listId?: string | null;
+  gearIds: string[];
+  status: KitStatus;
+  checkedOutAt?: TimestampLike | null;
+  checkedOutDate?: IsoDate | null;
+  returnedAt?: TimestampLike | null;
+  returnedDate?: IsoDate | null;
+}
+
+/** A single piece of gear checked out outside a kit. */
+export interface Checkout extends Stamped {
+  gearId: string;
+  userId: string;
+  startDate: IsoDate;
+  dueBackDate?: IsoDate | null;
+  notes?: string;
+  status: 'out' | 'returned';
+  returnedDate?: IsoDate | null;
+}
+
+/** Days a piece of gear was actually used; a function adds it to gear.stats. Permanent. */
+export interface UsageLog extends Stamped {
+  gearId: string;
+  userId: string;
+  kitId?: string | null;
+  checkoutId?: string | null;
+  startDate: IsoDate;
+  endDate: IsoDate;
+  daysUsed: number;
+  uses?: number | null;
+  notes?: string;
 }

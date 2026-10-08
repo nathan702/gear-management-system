@@ -312,6 +312,70 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ---------------------------------------------------- lists, kits, usage
+
+    function validList(d) {
+      return d.name is string && d.name.size() > 0 && d.name.size() <= 120
+        && d.active is bool
+        && d.lines is list && d.lines.size() <= 100;
+    }
+
+    match /lists/{id} {
+      allow read: if isActive();
+      allow create: if isManager() && stampedCreate() && validList(request.resource.data);
+      allow update: if isManager() && stampedUpdate() && validList(request.resource.data);
+      allow delete: if isManager();
+    }
+
+    function validKit(d) {
+      return d.name is string && d.name.size() > 0 && d.name.size() <= 120
+        && d.ownerId is string
+        && d.status in ['planned', 'checked_out', 'returned']
+        && d.gearIds is list && d.gearIds.size() <= 300
+        && optDate(d, 'startDate') && optDate(d, 'endDate')
+        && (d.startDate == null || d.endDate == null || d.startDate <= d.endDate);
+    }
+
+    // Everyone sees every kit. People manage their own; admins manage anyone's.
+    match /kits/{id} {
+      allow read: if isActive();
+      allow create: if isActive() && stampedCreate() && validKit(request.resource.data)
+        && (request.resource.data.ownerId == request.auth.uid || isAdmin());
+      allow update: if isActive() && stampedUpdate() && validKit(request.resource.data)
+        && (resource.data.ownerId == request.auth.uid || isAdmin())
+        && (request.resource.data.ownerId == resource.data.ownerId || isAdmin());
+      allow delete: if isActive() && (resource.data.ownerId == request.auth.uid || isAdmin());
+    }
+
+    match /checkouts/{id} {
+      allow read: if isActive();
+      allow create: if isActive() && stampedCreate()
+        && (request.resource.data.userId == request.auth.uid || isAdmin())
+        && request.resource.data.status == 'out'
+        && exists(gearPath(request.resource.data.gearId))
+        && request.resource.data.startDate is string;
+      allow update: if isActive() && stampedUpdate()
+        && (resource.data.userId == request.auth.uid || isManager())
+        && request.resource.data.status in ['out', 'returned']
+        && !changed().hasAny(['gearId', 'userId', 'createdAt', 'createdBy']);
+      allow delete: if isAdmin();
+    }
+
+    // Days used are permanent once logged; a function adds them to gear.stats.
+    match /usageLogs/{id} {
+      allow read: if isActive();
+      allow create: if isActive() && stampedCreate()
+        && (request.resource.data.userId == request.auth.uid || isManager())
+        && exists(gearPath(request.resource.data.gearId))
+        && request.resource.data.daysUsed is number
+        && request.resource.data.daysUsed >= 0 && request.resource.data.daysUsed <= 366
+        && optNumber(request.resource.data, 'uses')
+        && request.resource.data.startDate is string && request.resource.data.endDate is string
+        && !('processedAt' in request.resource.data);
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
     // ----------------------------------------------------------------- photos
 
     match /photos/{id} {

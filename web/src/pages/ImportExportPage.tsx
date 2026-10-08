@@ -9,11 +9,20 @@ import {
   inspectionLogRows,
   planFormImport,
   workOrderRows,
+  KIT_HEADERS,
+  LIST_HEADERS,
+  USAGE_HEADERS,
+  kitRows,
+  listsToRows,
+  planListImport,
+  usageRows,
+  type ListImportPlan,
+  type UsageLog,
   type FormImportPlan,
   type Inspection,
   type WorkOrder,
 } from '@gear/shared';
-import { saveInspectionForm } from '../data/writes';
+import { saveInspectionForm, saveList } from '../data/writes';
 import type { Data } from '../data/DataProvider';
 import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Upload } from 'lucide-react';
 import {
@@ -45,6 +54,7 @@ export function ImportExportPage() {
       <ExportCard keys={keys} />
       <ImportCard keys={keys} />
       <InspectionsCard />
+      <KitsCard />
     </div>
   );
 }
@@ -340,7 +350,157 @@ async function inspectionSheets(data: Data) {
     { name: 'Inspection forms', headers: [...FORM_HEADERS], rows: formsToRows([...data.inspectionForms.values()]) },
     { name: 'Inspection log', headers: [...INSPECTION_LOG_HEADERS], rows: await inspectionLog(data) },
     { name: 'Work orders', headers: [...WORK_ORDER_LOG_HEADERS], rows: await workOrderLog(data) },
+    { name: 'Lists', headers: [...LIST_HEADERS], rows: listRows(data) },
+    { name: 'Kits', headers: [...KIT_HEADERS], rows: kitSheet(data) },
+    { name: 'Usage', headers: [...USAGE_HEADERS], rows: await usageLog(data) },
   ];
+}
+
+const listRows = (data: Data) =>
+  listsToRows([...data.lists.values()], {
+    productLabel: data.productLabel,
+    categoryName: (id) => data.categories.get(id)?.name ?? '',
+    programAreaName: (id) => (id ? (data.programAreas.get(id)?.name ?? '') : ''),
+  });
+
+const kitSheet = (data: Data) =>
+  kitRows([...data.kits.values()], {
+    user: (id) => data.users.get(id)?.displayName ?? '',
+    programAreaName: (id) => (id ? (data.programAreas.get(id)?.name ?? '') : ''),
+    gear: (id) => data.gear.get(id),
+    productLabel: data.productLabel,
+  });
+
+async function usageLog(data: Data) {
+  const snap = await getDocs(query(collection(db, 'usageLogs'), orderBy('endDate', 'desc')));
+  return usageRows(
+    snap.docs.map((d) => ({ id: d.id, ...(d.data() as UsageLog) })),
+    {
+      gear: (id) => data.gear.get(id),
+      productLabel: data.productLabel,
+      user: (id) => data.users.get(id)?.displayName ?? '',
+      kit: (id) => (id ? (data.kits.get(id)?.name ?? '') : ''),
+    },
+  );
+}
+
+function KitsCard() {
+  const { uid } = useMe();
+  const data = useData();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [plan, setPlan] = useState<ListImportPlan | null>(null);
+  const [busy, setBusy] = useState(false);
+  const row = (label: string, note: string, csv: () => Promise<void>, xlsx: () => Promise<void>, extra?: React.ReactNode) => (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <span className="text-sm">
+        <b>{label}</b> <span className="text-stone-500">· {note}</span>
+      </span>
+      <span className="flex flex-wrap gap-2">
+        <Button size="sm" onClick={csv}>
+          <Download size={14} /> CSV
+        </Button>
+        <Button size="sm" onClick={xlsx}>
+          <Download size={14} /> Excel
+        </Button>
+        {extra}
+      </span>
+    </div>
+  );
+  return (
+    <Card title="Lists, kits & usage">
+      <div className="space-y-4">
+        {row(
+          'Lists',
+          'one row per line',
+          async () => downloadCsv([...LIST_HEADERS], listRows(data), `lists-${stamp()}.csv`),
+          async () => downloadXlsx([{ name: 'Lists', headers: [...LIST_HEADERS], rows: listRows(data) }], `lists-${stamp()}.xlsx`),
+          <Button size="sm" onClick={() => fileInput.current?.click()} disabled={busy}>
+            <Upload size={14} /> Import
+          </Button>,
+        )}
+        {row(
+          'Kits',
+          'one row per item',
+          async () => downloadCsv([...KIT_HEADERS], kitSheet(data), `kits-${stamp()}.csv`),
+          async () => downloadXlsx([{ name: 'Kits', headers: [...KIT_HEADERS], rows: kitSheet(data) }], `kits-${stamp()}.xlsx`),
+        )}
+        {row(
+          'Usage log',
+          'days used per item',
+          async () => downloadCsv([...USAGE_HEADERS], await usageLog(data), `usage-${stamp()}.csv`),
+          async () => downloadXlsx([{ name: 'Usage', headers: [...USAGE_HEADERS], rows: await usageLog(data) }], `usage-${stamp()}.xlsx`),
+        )}
+        <input
+          ref={fileInput}
+          type="file"
+          accept=".csv,.xlsx"
+          hidden
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (!file) return;
+            try {
+              const lower = (m: Map<string, string>) => new Map([...m].map(([id, n]) => [n.toLowerCase(), id]));
+              const names = (m: Map<string, { name: string }>) => new Map([...m.values()].map((v) => [(v as unknown as { id: string }).id, v.name]));
+              setPlan(
+                planListImport(await readSpreadsheet(file), [...data.lists.values()], {
+                  products: lower(new Map([...data.products.keys()].map((id) => [id, data.productLabel(id)]))),
+                  categories: lower(names(data.categories)),
+                  programAreas: lower(names(data.programAreas)),
+                }),
+              );
+            } catch (err) {
+              notify((err as Error).message, 'error');
+            }
+          }}
+        />
+        {plan && (
+          <div className="space-y-3 rounded-lg bg-stone-50 p-3 text-sm">
+            <p>
+              Columns: <code>list</code>, <code>quantity</code>, <code>product</code> (full name as exported) <i>or</i> <code>category</code>, <code>notes</code>,{' '}
+              <code>program_area</code>, <code>list_description</code>. A list with an existing name has its lines replaced.
+            </p>
+            <ul className="space-y-1">
+              {plan.lists.map((l) => (
+                <li key={l.name}>
+                  <b>{l.name}</b> — {plural(l.lines.length, 'line')} · {l.id ? 'replaces existing list' : 'new list'}
+                  {l.errors.map((er) => (
+                    <div key={er} className="text-red-700">
+                      {er}
+                    </div>
+                  ))}
+                </li>
+              ))}
+            </ul>
+            <div className="flex gap-2">
+              <Button
+                variant="primary"
+                disabled={busy || !plan.lists.some((l) => !l.errors.length && l.lines.length)}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    let n = 0;
+                    for (const l of plan.lists) {
+                      if (l.errors.length || !l.lines.length) continue;
+                      await saveList(uid, l.id ?? null, { name: l.name, description: l.description, programAreaId: l.programAreaId, lines: l.lines, active: true });
+                      n++;
+                    }
+                    notify(`${plural(n, 'list')} imported`, 'success');
+                    setPlan(null);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Import lists without errors
+              </Button>
+              <Button onClick={() => setPlan(null)}>Cancel</Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
 }
 
 function InspectionsCard() {

@@ -168,9 +168,10 @@ export function WorkOrderDetailPage() {
             className="mt-4 space-y-2"
             onSubmit={async (e) => {
               e.preventDefault();
-              if (!comment.trim()) return;
-              await addWorkOrderComment(uid, wo.id, comment.trim());
+              const text = comment.trim();
+              if (!text) return;
               setComment('');
+              await addWorkOrderComment(uid, wo.id, text);
             }}
           >
             <Textarea className="min-h-16" placeholder="Add a note…" value={comment} onChange={(e) => setComment(e.target.value)} aria-label="Comment" />

@@ -16,6 +16,9 @@ import {
   type Product,
   type WorkOrder,
   type WorkOrderRule,
+  type GearList,
+  type Kit,
+  type Checkout,
   type StatusChangeSource,
 } from '@gear/shared';
 import { db } from '../firebase';
@@ -218,4 +221,64 @@ export async function saveWorkOrderRule(uid: string, id: string | null, data: Om
   const batch = writeBatch(db);
   batch.set(ref, clean({ ...data, ...(id ? updateStamp(uid) : createStamp(uid)) }), { merge: true });
   await commit(batch, 'Rule');
+}
+
+/* ---------------------------------------------------- lists, kits, usage */
+
+export async function saveList(uid: string, id: string | null, data: Omit<GearList, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>) {
+  const ref = id ? doc(db, 'lists', id) : doc(collection(db, 'lists'));
+  const batch = writeBatch(db);
+  batch.set(ref, clean({ ...data, ...(id ? updateStamp(uid) : createStamp(uid)) }), { merge: true });
+  await commit(batch, 'List');
+  return ref.id;
+}
+
+export async function saveKit(uid: string, id: string | null, data: Partial<Kit>) {
+  const ref = id ? doc(db, 'kits', id) : doc(collection(db, 'kits'));
+  const batch = writeBatch(db);
+  if (id) batch.update(ref, clean({ ...data, ...updateStamp(uid) }));
+  else batch.set(ref, clean({ status: 'planned', gearIds: [], ...data, ...createStamp(uid) }));
+  await commit(batch, 'Kit');
+  return ref.id;
+}
+
+export interface UsageEntry {
+  gearId: string;
+  daysUsed: number;
+  uses?: number | null;
+}
+
+function addUsage(batch: WriteBatch, uid: string, userId: string, entries: UsageEntry[], range: { startDate: string; endDate: string }, link: { kitId?: string; checkoutId?: string }) {
+  for (const e of entries)
+    batch.set(doc(collection(db, 'usageLogs')), clean({ ...e, userId, ...range, kitId: link.kitId ?? null, checkoutId: link.checkoutId ?? null, ...createStamp(uid) }));
+}
+
+/** Returns a kit, logging the days each item was actually used. Works offline. */
+export async function returnKit(uid: string, kit: Kit & { id: string }, returnedDate: string, entries: UsageEntry[]) {
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'kits', kit.id), { status: 'returned', returnedAt: serverTimestamp(), returnedDate, ...updateStamp(uid) });
+  addUsage(batch, uid, kit.ownerId, entries, { startDate: kit.checkedOutDate || kit.startDate || returnedDate, endDate: returnedDate }, { kitId: kit.id });
+  await commit(batch, 'Return');
+}
+
+export async function checkOutGear(uid: string, userId: string, gearId: string, startDate: string, dueBackDate: string | null, notes: string) {
+  const ref = doc(collection(db, 'checkouts'));
+  const batch = writeBatch(db);
+  batch.set(ref, clean({ gearId, userId, startDate, dueBackDate, notes, status: 'out', ...createStamp(uid) }));
+  await commit(batch, 'Check-out');
+  return ref.id;
+}
+
+export async function returnGear(uid: string, co: Checkout & { id: string }, returnedDate: string, daysUsed: number, uses: number | null) {
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'checkouts', co.id), { status: 'returned', returnedDate, ...updateStamp(uid) });
+  addUsage(batch, uid, co.userId, [{ gearId: co.gearId, daysUsed, uses }], { startDate: co.startDate, endDate: returnedDate }, { checkoutId: co.id });
+  await commit(batch, 'Return');
+}
+
+/** Logs use that didn't go through a kit or check-out (e.g. a day trip). */
+export async function logUsage(uid: string, gearId: string, startDate: string, endDate: string, daysUsed: number, uses: number | null, notes: string) {
+  const batch = writeBatch(db);
+  batch.set(doc(collection(db, 'usageLogs')), clean({ gearId, userId: uid, startDate, endDate, daysUsed, uses, notes, kitId: null, checkoutId: null, ...createStamp(uid) }));
+  await commit(batch, 'Usage');
 }

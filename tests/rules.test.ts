@@ -322,3 +322,51 @@ describe('work orders', () => {
     await assertSucceeds(updateDoc(doc(as('admin'), 'gear', 'existing'), { ...change, ...stampUpdate('admin') }));
   });
 });
+
+describe('lists, kits, check-outs and usage', () => {
+  const kit = (uid: string, extra: Record<string, unknown> = {}) => ({
+    name: 'Camp wk1',
+    ownerId: uid,
+    programAreaId: null,
+    startDate: '2026-10-10',
+    endDate: '2026-10-16',
+    gearIds: ['existing'],
+    status: 'planned',
+    ...stampCreate(uid),
+    ...extra,
+  });
+
+  it('lets managers write lists and everyone read them', async () => {
+    const list = (uid: string) => ({ name: 'Day trip', active: true, lines: [], programAreaId: null, ...stampCreate(uid) });
+    await assertSucceeds(setDoc(doc(as('manager'), 'lists', 'l1'), list('manager')));
+    await assertFails(setDoc(doc(as('staff'), 'lists', 'l2'), list('staff')));
+    await assertSucceeds(getDoc(doc(as('staff'), 'lists', 'l1')));
+  });
+
+  it('lets people manage their own kits and admins anyone’s', async () => {
+    await assertSucceeds(setDoc(doc(as('staff'), 'kits', 'k1'), kit('staff')));
+    await assertFails(setDoc(doc(as('staff'), 'kits', 'k2'), kit('manager')));
+    await assertSucceeds(setDoc(doc(as('admin'), 'kits', 'k3'), { ...kit('staff'), ...stampCreate('admin') }));
+    await assertFails(setDoc(doc(as('staff'), 'kits', 'k4'), kit('staff', { startDate: '2026-10-20' })));
+    await assertSucceeds(getDoc(doc(as('manager'), 'kits', 'k1')));
+    await assertFails(updateDoc(doc(as('manager'), 'kits', 'k1'), { name: 'Mine now', ...stampUpdate('manager') }));
+    await assertFails(updateDoc(doc(as('staff'), 'kits', 'k1'), { ownerId: 'manager', ...stampUpdate('staff') }));
+    await assertSucceeds(updateDoc(doc(as('staff'), 'kits', 'k1'), { status: 'checked_out', ...stampUpdate('staff') }));
+    await assertSucceeds(updateDoc(doc(as('admin'), 'kits', 'k1'), { ownerId: 'manager', ...stampUpdate('admin') }));
+  });
+
+  it('records check-outs and permanent usage for yourself', async () => {
+    const co = (uid: string, userId = uid) => ({ gearId: 'existing', userId, startDate: '2026-10-08', status: 'out', ...stampCreate(uid) });
+    await assertSucceeds(setDoc(doc(as('staff'), 'checkouts', 'c1'), co('staff')));
+    await assertFails(setDoc(doc(as('staff'), 'checkouts', 'c2'), co('staff', 'manager')));
+    await assertSucceeds(setDoc(doc(as('admin'), 'checkouts', 'c3'), co('admin', 'staff')));
+    await assertSucceeds(updateDoc(doc(as('staff'), 'checkouts', 'c1'), { status: 'returned', returnedDate: '2026-10-09', ...stampUpdate('staff') }));
+
+    const log = (uid: string, extra: Record<string, unknown> = {}) => ({ gearId: 'existing', userId: uid, startDate: '2026-10-08', endDate: '2026-10-09', daysUsed: 2, ...stampCreate(uid), ...extra });
+    await assertSucceeds(setDoc(doc(as('staff'), 'usageLogs', 'u1'), log('staff')));
+    await assertFails(setDoc(doc(as('staff'), 'usageLogs', 'u2'), log('staff', { daysUsed: 400 })));
+    await assertFails(setDoc(doc(as('staff'), 'usageLogs', 'u3'), log('staff', { userId: 'manager' })));
+    await assertFails(setDoc(doc(as('staff'), 'usageLogs', 'u4'), log('staff', { processedAt: serverTimestamp() })));
+    await assertFails(updateDoc(doc(as('admin'), 'usageLogs', 'u1'), { daysUsed: 5 }));
+  });
+});
