@@ -13,4 +13,5 @@ export { deletePhotoFiles } from './photos';
 export { applyInspection } from './inspections';
 export { onWorkOrderCreated, onWorkOrderUpdated } from './workOrders';
 export { onUsageLogged } from './usage';
+export { deliverNotification, notifyWorkOrder, notifyGearStatus, dailyDigest, runDigestNow, sendTestNotification } from './notifications';
 export * from './audit';

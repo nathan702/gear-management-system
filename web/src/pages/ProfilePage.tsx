@@ -8,6 +8,7 @@ import { updateStamp } from '../data/writes';
 import { Button, Card, Dl, Field, Input, PageHeader, Select } from '../components/ui';
 import { fmtTimestamp } from '../lib/format';
 import { notify } from '../components/toast';
+import { NotificationPrefsCard } from '../notifications/PrefsCard';
 
 export function ProfilePage() {
   const { profile, uid } = useMe();
@@ -69,6 +70,7 @@ export function ProfilePage() {
           </div>
         </form>
       </Card>
+      <NotificationPrefsCard />
     </div>
   );
 }

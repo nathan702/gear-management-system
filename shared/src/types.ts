@@ -54,6 +54,7 @@ export interface UserProfile extends Stamped {
   slackUserId?: string;
   homeProgramAreaId?: string | null;
   lastSignInAt?: TimestampLike;
+  notificationPrefs?: NotificationPrefs;
 }
 
 /** Keyed by lower-cased email. Consumed by the activateAccount function. */
@@ -435,4 +436,58 @@ export interface UsageLog extends Stamped {
   daysUsed: number;
   uses?: number | null;
   notes?: string;
+}
+
+/* ---------------------------------------------------------- notifications */
+
+export const NOTIFICATION_EVENTS = [
+  'daily_digest',
+  'manager_digest',
+  'work_order_assigned',
+  'work_order_created',
+  'work_order_closed',
+  'gear_quarantined',
+  'kit_gear_flagged',
+] as const;
+export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];
+
+export const NOTIFICATION_CHANNELS = ['email', 'slack'] as const;
+export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
+
+export type NotificationPrefs = Partial<Record<NotificationEvent, Partial<Record<NotificationChannel, boolean>>>>;
+
+/** An admin-configured destination: a Slack channel or an email address/list. */
+export interface NotificationRoute {
+  id: string;
+  name: string;
+  type: NotificationChannel;
+  /** Slack channel id (C0123…) or email address. */
+  target: string;
+  events: NotificationEvent[];
+}
+
+/** settings/notifications — readable by everyone, written by admins. */
+export interface NotificationSettings {
+  enabled: boolean;
+  /** Local hour (America/New_York) the daily reminders go out. */
+  digestHour: number;
+  routes: NotificationRoute[];
+  emailConfigured?: boolean;
+  slackConfigured?: boolean;
+}
+
+/** notifications/{id} — outbox, delivered by a Cloud Function. The id doubles as a de-duplication key. */
+export interface OutboundNotification {
+  event: NotificationEvent | 'test';
+  channel: NotificationChannel;
+  userId?: string | null;
+  /** Email address or Slack user/channel id; filled in for users at send time if missing. */
+  target?: string | null;
+  subject: string;
+  text: string;
+  link?: string | null;
+  status: 'pending' | 'sent' | 'skipped' | 'failed';
+  error?: string | null;
+  createdAt?: TimestampLike;
+  sentAt?: TimestampLike | null;
 }

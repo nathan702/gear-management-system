@@ -20,8 +20,10 @@
     "@firebase/rules-unit-testing": "^5.0.0",
     "@playwright/test": "1.56.1",
     "@types/node": "^22.0.0",
+    "@types/smtp-server": "^3.5.13",
     "firebase-admin": "^13.10.0",
     "firebase-tools": "^15.0.0",
+    "smtp-server": "^3.19.17",
     "tsx": "^4.20.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
