@@ -237,6 +237,37 @@ async function seedDemo(
   woBatch.set(db.doc('counters/workOrders'), { next: number });
   await woBatch.commit();
   console.log(`demo work orders: ${number - 1}`);
+
+  // A list for a common trip, and a kit built from it.
+  const staff = (await auth.getUserByEmail('staff@calleva.org')).uid;
+  const listRef = db.collection('lists').doc();
+  await listRef.set({
+    name: 'Day raft trip — 6 guests',
+    description: 'Two rafts plus PFDs and helmets for guests and guides.',
+    programAreaId: program('River School'),
+    lines: [
+      { id: 'l1', productId: productIds.raft, categoryId: null, quantity: 2, notes: '' },
+      { id: 'l2', productId: null, categoryId: category('PFDs'), quantity: 8, notes: 'Mixed sizes' },
+      { id: 'l3', productId: productIds.helmet, categoryId: null, quantity: 8, notes: '' },
+    ],
+    active: true,
+    ...stamp(),
+  });
+  const active = (await db.collection('gear').where('status', '==', 'active').get()).docs;
+  const pick = (pid: string, n: number) => active.filter((d) => d.get('productId') === pid).slice(0, n).map((d) => d.id);
+  await db.collection('kits').doc().set({
+    name: 'River trip with Year 9',
+    ownerId: staff,
+    programAreaId: program('River School'),
+    startDate: addDays(todayIso(), 3),
+    endDate: addDays(todayIso(), 4),
+    notes: '',
+    listId: listRef.id,
+    gearIds: [...pick(productIds.raft, 1), ...pick(productIds.pfd, 4)],
+    status: 'planned',
+    ...stamp(),
+  });
+  console.log('demo list and kit added');
 }
 
 main().then(

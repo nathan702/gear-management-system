@@ -60,7 +60,7 @@ test('failed inspections share one work order; closing it returns the gear to Ac
   await expect(page.getByText('Open → In progress')).toBeVisible({ timeout: 15_000 });
   await page.getByLabel('Comment').fill('Ordered a Leafield valve');
   await page.getByRole('button', { name: 'Add note' }).click();
-  await expect(page.getByText('Ordered a Leafield valve')).toBeVisible();
+  await expect(page.locator('ol').getByText('Ordered a Leafield valve')).toBeVisible();
   await shot(page, 'p3-01-work-order');
   await page.getByRole('button', { name: 'Complete' }).click();
   await expect(page.getByText(/goes from/)).toContainText('Active');

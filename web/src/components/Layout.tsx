@@ -5,6 +5,8 @@ import {
   ClipboardCheck,
   CloudOff,
   Wrench,
+  Backpack,
+  ListChecks,
   Home,
   LogOut,
   Menu,
@@ -60,6 +62,8 @@ export function Layout() {
     { to: '/scan', label: 'Scan', icon: <QrCode size={18} /> },
     { to: '/inspections', label: 'Inspections', icon: <ClipboardCheck size={18} /> },
     { to: '/work-orders', label: 'Work orders', icon: <Wrench size={18} /> },
+    { to: '/kits', label: 'Kits', icon: <Backpack size={18} /> },
+    { to: '/lists', label: 'Lists', icon: <ListChecks size={18} /> },
     { to: '/products', label: 'Products', icon: <Package size={18} /> },
   ];
   const manage: NavItem[] = [

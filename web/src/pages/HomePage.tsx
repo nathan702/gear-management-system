@@ -6,6 +6,9 @@ import { byName, useData } from '../data/DataProvider';
 import { Card, Empty, LinkButton, StatusBadge } from '../components/ui';
 import { fmtMoney, fmtTimestamp, plural } from '../lib/format';
 import { useInspectionSummaries } from '../inspections/common';
+import { KitStatusBadge } from '../kits/common';
+import { kitDates } from './KitsPage';
+import { kitIsLive } from '@gear/shared';
 import { isOverdue, responsibleInspectors, todayIso } from '@gear/shared';
 
 const TILE: Record<GearStatus, string> = {
@@ -17,7 +20,10 @@ const TILE: Record<GearStatus, string> = {
 
 export function HomePage() {
   const { profile, uid, isManager } = useMe();
-  const { gear, programAreas, products, inspectionAssignments, openWorkOrders } = useData();
+  const { gear, programAreas, products, inspectionAssignments, openWorkOrders, kits } = useData();
+  const myKits = [...kits.values()]
+    .filter((k) => k.ownerId === uid && kitIsLive(k, todayIso()))
+    .sort((a, b) => (a.startDate ?? '').localeCompare(b.startDate ?? ''));
   const wos = [...openWorkOrders.values()];
   const woOverdue = wos.filter((w) => isOverdue(w, todayIso())).length;
   const woMine = wos.filter((w) => w.assigneeId === uid).length;
@@ -88,6 +94,26 @@ export function HomePage() {
           <span className="text-3xl font-semibold tabular-nums">{mineDue}</span>
         </Link>
       </div>
+
+      {myKits.length > 0 && (
+        <Card title="My kits" actions={<Link className="link text-sm" to="/kits">All kits</Link>}>
+          <ul className="divide-y divide-stone-100 text-sm">
+            {myKits.map((k) => (
+              <li key={k.id}>
+                <Link to={`/kits/${k.id}`} className="flex items-center justify-between gap-2 py-2 hover:bg-stone-50">
+                  <span>
+                    <span className="font-medium">{k.name}</span>
+                    <span className="block text-xs text-stone-500">
+                      {kitDates(k)} · {plural(k.gearIds.length, 'item')}
+                    </span>
+                  </span>
+                  <KitStatusBadge status={k.status} />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <div className="grid grid-cols-3 gap-3">
         <Link to="/work-orders" className="rounded-xl border border-stone-200 bg-white p-4 transition hover:shadow-sm">
