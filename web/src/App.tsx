@@ -35,6 +35,7 @@ import { KitsPage } from './pages/KitsPage';
 import { KitPage } from './pages/KitPage';
 import { ListsPage, ListEditPage } from './pages/ListsPage';
 import { NotificationsAdminPage } from './pages/NotificationsAdminPage';
+import { ReportsPage } from './pages/ReportsPage';
 
 function SignedInApp() {
   const { uid } = useMe();
@@ -74,6 +75,8 @@ function SignedInApp() {
             <Route path="q/:code" element={<QrResolvePage />} />
             <Route path="labels" element={<LabelsPage />} />
             <Route path="me" element={<ProfilePage />} />
+            <Route path="reports" element={<Manager><ReportsPage /></Manager>} />
+            <Route path="reports/:tab" element={<Manager><ReportsPage /></Manager>} />
             <Route path="admin/reference" element={<Manager><ReferencePage /></Manager>} />
             <Route path="admin/import-export" element={<Manager><ImportExportPage /></Manager>} />
             <Route path="admin/users" element={<Admin><UsersPage /></Admin>} />

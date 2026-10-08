@@ -14,7 +14,7 @@ with no signal.
 | 3. Work orders | One open work order per gear from failed inspections (later failures added to it), issue reports, manual work orders, assignment rules, close → back to Active | **Built** |
 | 4. Kits, lists, check-outs | Lists of products/categories, kits with dates and no double-booking, fill from list, scan to add, check-out/return with days used, single-item check-outs, usage logging | **Built** |
 | 5. Notifications | Email and Slack; per-person choices; daily reminders (inspections due, work orders due) to inspectors and kit holders; manager summary; alerts for assignments, new work orders, quarantines, problems with kit gear; shared channels; delivery log | **Built** |
-| 6. Reporting | Usage, inspection completion, inventory, age, replacement budget forecast | Next |
+| 6. Reporting | Inventory, age & replacement budget forecast, usage, inspection completion, work orders; filterable, exportable | **Built** |
 
 ## Stack
 
@@ -107,6 +107,16 @@ Everyone picks, on their profile page, which of these they get by email and/or S
 | Problem with gear in your kit | Owners of current/upcoming kits when their gear is quarantined or gets an issue | Email + Slack |
 
 Admins set it up under **Manage → Notifications**: the reminder hour (Eastern), an SMTP account for email (Google Workspace: smtp.gmail.com with an app password), a Slack bot token (scopes `chat:write`, `users:read`, `users:read.email` — people are matched to Slack by email), and shared channels that receive chosen events. Messages queue in an outbox delivered by a Cloud Function; the delivery log shows what was sent, skipped (not set up) or failed and why. Without credentials nothing is sent.
+
+### Reports
+
+**Manage → Reports** (managers and admins). Every tab filters by program area, category and location, the filters carry across tabs (and live in the URL, so a report can be bookmarked or shared), and every table exports to CSV or Excel.
+
+- **Inventory** — items, status split, purchase value and average age by program area, category, location or product.
+- **Age & replacement** — replacement budget forecast by year or quarter over the next 3, 5 or 10 years, and by program area (or another grouping) for budgeting. Each item in service is counted in the period its life ends — custom end of life, else the product's lifetime from manufacture, first use or purchase — at the product's replacement cost, else its purchase value. Gear already past end of life, and gear that can't be forecast (no lifetime, dates or cost), is shown separately. Also lists gear past or reaching end of life within 3–36 months.
+- **Usage** — days used per item and per group over a date range (logs straddling the range count in proportion), and gear that wasn't used at all.
+- **Inspections** — how many items on an in-depth schedule are current today and which are overdue, plus inspections done in the range by group and by form, with failure rates.
+- **Work orders** — opened and closed per month, time to close (average and median), cost and labor hours, by source and severity, and gear needing repeat repairs.
 
 ## Roles
 
