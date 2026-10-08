@@ -11,4 +11,5 @@ export { activateAccount, syncAuthDisabled, expireAccounts } from './accounts';
 export { gearStatusHistory } from './gear';
 export { deletePhotoFiles } from './photos';
 export { applyInspection } from './inspections';
+export { onWorkOrderCreated, onWorkOrderUpdated } from './workOrders';
 export * from './audit';

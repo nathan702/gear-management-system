@@ -153,11 +153,14 @@ service cloud.firestore {
 
     // A status change carries a reason and a fresh timestamp, so the history
     // trigger never reuses a stale reason.
+    // Gear returns to Active by closing its work orders (a Cloud Function);
+    // only admins can set it directly, e.g. to correct imported data.
     function validStatusChange() {
       return request.resource.data.status == resource.data.status
         || (request.resource.data.statusReason is string
             && request.resource.data.statusReason.size() > 0
-            && request.resource.data.statusChangedAt == request.time);
+            && request.resource.data.statusChangedAt == request.time
+            && (request.resource.data.status != 'active' || isAdmin()));
     }
 
     match /gear/{id} {
@@ -241,9 +244,72 @@ service cloud.firestore {
         && request.resource.data.responses is list
         && request.resource.data.responses.size() <= 150
         && validOverride(request.resource.data)
-        && !request.resource.data.keys().hasAny(['processedAt', 'statusApplied', 'statusBefore']);
+        && !request.resource.data.keys().hasAny(['processedAt', 'statusApplied', 'statusBefore', 'workOrderId']);
       allow update: if false;
       allow delete: if isAdmin();
+    }
+
+    // ------------------------------------------------------------ work orders
+
+    function validWorkOrder(d) {
+      return d.title is string && d.title.size() > 0 && d.title.size() <= 200
+        && d.severity in ['note', 'has_issues', 'quarantined']
+        && d.status in ['open', 'in_progress', 'waiting_parts', 'done', 'cancelled']
+        && d.priority in ['low', 'normal', 'high', 'urgent']
+        && (d.assigneeId == null || d.assigneeId is string)
+        && optDate(d, 'dueDate')
+        && optString(d, 'description', 10000)
+        && optString(d, 'resolution', 5000)
+        && optNumber(d, 'cost') && optNumber(d, 'laborHours');
+    }
+
+    // Closing as done needs a resolution; only managers cancel.
+    function validClose(d) {
+      return (d.status != 'done' || (d.resolution is string && d.resolution.size() > 0))
+        && (d.status != 'cancelled' || resource.data.status == 'cancelled' || isManager());
+    }
+
+    match /workOrders/{id} {
+      allow read: if isActive();
+      // Anyone can report an issue; managers can open one directly. Numbers
+      // and inspection work orders come from Cloud Functions.
+      allow create: if isActive() && stampedCreate()
+        && validWorkOrder(request.resource.data)
+        && request.resource.data.status == 'open'
+        && (request.resource.data.source == 'issue'
+            || (request.resource.data.source == 'manual' && isManager()))
+        && exists(gearPath(request.resource.data.gearId))
+        && !request.resource.data.keys().hasAny(['number', 'inspectionIds', 'closedAt', 'closedBy', 'gearStatusAfterClose']);
+      // Managers edit anything; the assignee works the order through to done.
+      allow update: if isActive() && stampedUpdate()
+        && validWorkOrder(request.resource.data)
+        && validClose(request.resource.data)
+        && !changed().hasAny(['number', 'gearId', 'source', 'inspectionIds', 'createdAt', 'createdBy',
+                              'closedAt', 'closedBy', 'gearStatusAfterClose', 'autoAssign'])
+        && (isManager()
+            || (resource.data.assigneeId == request.auth.uid
+                && onlyChanged(['status', 'resolution', 'cost', 'laborHours', 'updatedAt', 'updatedBy'])));
+      allow delete: if isAdmin();
+
+      match /log/{entry} {
+        allow read: if isActive();
+        allow create: if isActive()
+          && request.resource.data.type == 'comment'
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.at == request.time
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 5000;
+        allow update, delete: if false;
+      }
+    }
+
+    match /workOrderRules/{id} {
+      allow read: if isActive();
+      allow write: if isAdmin();
+    }
+
+    match /counters/{id} {
+      allow read, write: if false;
     }
 
     // ----------------------------------------------------------------- photos

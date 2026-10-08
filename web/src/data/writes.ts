@@ -14,6 +14,8 @@ import {
   type InspectionAssignment,
   type InspectionForm,
   type Product,
+  type WorkOrder,
+  type WorkOrderRule,
   type StatusChangeSource,
 } from '@gear/shared';
 import { db } from '../firebase';
@@ -182,4 +184,38 @@ export async function saveAssignment(uid: string, existing: (InspectionAssignmen
   else if (existing) batch.update(doc(db, 'inspectionAssignments', existing.id), { userIds: data.userIds, ...updateStamp(uid) });
   else if (data.userIds.length) batch.set(doc(collection(db, 'inspectionAssignments')), { ...data, ...createStamp(uid) });
   await commit(batch, 'Assignment');
+}
+
+/* ------------------------------------------------------------ work orders */
+
+export type NewWorkOrder = Pick<WorkOrder, 'gearId' | 'productId' | 'title' | 'description' | 'severity' | 'priority' | 'assigneeId' | 'dueDate'> & {
+  source: 'issue' | 'manual';
+  /** Let the server fill assignee, due date and priority from the rules. */
+  autoAssign?: boolean;
+};
+
+/** Works offline; a function numbers it and updates the gear's status. */
+export async function createWorkOrder(uid: string, id: string, data: NewWorkOrder) {
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'workOrders', id), clean({ ...data, status: 'open', ...createStamp(uid) }));
+  await commit(batch, 'Work order');
+}
+
+export async function updateWorkOrder(uid: string, id: string, changes: Partial<WorkOrder>) {
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'workOrders', id), clean({ ...changes, ...updateStamp(uid) }));
+  await commit(batch, 'Work order');
+}
+
+export async function addWorkOrderComment(uid: string, workOrderId: string, text: string) {
+  const batch = writeBatch(db);
+  batch.set(doc(collection(db, 'workOrders', workOrderId, 'log')), { type: 'comment', text, by: uid, at: serverTimestamp() });
+  await commit(batch, 'Comment');
+}
+
+export async function saveWorkOrderRule(uid: string, id: string | null, data: Omit<WorkOrderRule, 'createdAt' | 'createdBy' | 'updatedAt' | 'updatedBy'>) {
+  const ref = id ? doc(db, 'workOrderRules', id) : doc(collection(db, 'workOrderRules'));
+  const batch = writeBatch(db);
+  batch.set(ref, clean({ ...data, ...(id ? updateStamp(uid) : createStamp(uid)) }), { merge: true });
+  await commit(batch, 'Rule');
 }

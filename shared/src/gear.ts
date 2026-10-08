@@ -35,6 +35,11 @@ export function addMonths(iso: IsoDate, months: number): IsoDate {
   return target.toISOString().slice(0, 10);
 }
 
+export function addDays(iso: IsoDate, days: number): IsoDate {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + Math.round(days))).toISOString().slice(0, 10);
+}
+
 export function daysBetween(from: IsoDate, to: IsoDate): number {
   return Math.round((Date.parse(to) - Date.parse(from)) / 864e5);
 }

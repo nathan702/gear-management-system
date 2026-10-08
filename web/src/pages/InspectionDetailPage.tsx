@@ -90,6 +90,9 @@ export function InspectionDetailPage() {
                 </span>
               ),
             ],
+            ...(insp.workOrderId
+              ? ([['Work order', <Link key="w" className="link" to={`/work-orders/${insp.workOrderId}`}>Repair work order</Link>]] as [string, React.ReactNode][])
+              : []),
             ['Form version', insp.formVersion],
             ['Recorded', fmtTimestamp(insp.createdAt, true)],
           ]}

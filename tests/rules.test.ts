@@ -35,7 +35,8 @@ async function createGear(db: Firestore, uid: string, id: string, qrCode: string
 
 beforeAll(async () => {
   env = await initializeTestEnvironment({
-    projectId: 'demo-gear',
+    // A separate project so Cloud Functions (which watch demo-gear) don't react to these writes.
+    projectId: 'demo-rules',
     firestore: { rules: readFileSync('firestore.rules', 'utf8'), host: '127.0.0.1', port: 8080 },
   });
 });
@@ -250,5 +251,74 @@ describe('inspections', () => {
     await assertSucceeds(setDoc(doc(as('manager'), 'inspectionAssignments', 'a1'), a('manager')));
     await assertFails(setDoc(doc(as('staff'), 'inspectionAssignments', 'a2'), a('staff')));
     await assertFails(setDoc(doc(as('manager'), 'inspectionAssignments', 'a3'), { ...a('manager'), scope: 'planet' }));
+  });
+});
+
+describe('work orders', () => {
+  const wo = (uid: string, extra: Record<string, unknown> = {}) => ({
+    gearId: 'existing',
+    productId: null,
+    title: 'Leaky valve',
+    description: '',
+    source: 'issue',
+    severity: 'has_issues',
+    status: 'open',
+    priority: 'normal',
+    assigneeId: null,
+    dueDate: null,
+    autoAssign: true,
+    ...stampCreate(uid),
+    ...extra,
+  });
+  const seedWo = (extra: Record<string, unknown> = {}) =>
+    env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'workOrders', 'w1'), { ...wo('manager'), number: 1, autoAssign: null, createdAt: Timestamp.now(), updatedAt: Timestamp.now(), ...extra }));
+
+  it('lets anyone report an issue, but only managers open manual work orders', async () => {
+    await assertSucceeds(setDoc(doc(as('staff'), 'workOrders', 'a'), wo('staff')));
+    await assertFails(setDoc(doc(as('staff'), 'workOrders', 'b'), wo('staff', { source: 'manual' })));
+    await assertSucceeds(setDoc(doc(as('manager'), 'workOrders', 'c'), wo('manager', { source: 'manual' })));
+    await assertFails(setDoc(doc(as('manager'), 'workOrders', 'd'), wo('manager', { source: 'inspection' })));
+    await assertFails(setDoc(doc(as('staff'), 'workOrders', 'e'), wo('staff', { number: 99 })));
+    await assertFails(setDoc(doc(as('staff'), 'workOrders', 'f'), wo('staff', { status: 'done' })));
+    await assertFails(setDoc(doc(as('staff'), 'workOrders', 'g'), wo('staff', { gearId: 'missing' })));
+  });
+
+  it('lets the assignee work the order but not reassign it', async () => {
+    await seedWo({ assigneeId: 'staff' });
+    const db = as('staff');
+    await assertSucceeds(updateDoc(doc(db, 'workOrders', 'w1'), { status: 'in_progress', ...stampUpdate('staff') }));
+    await assertFails(updateDoc(doc(db, 'workOrders', 'w1'), { assigneeId: 'manager', ...stampUpdate('staff') }));
+    await assertFails(updateDoc(doc(db, 'workOrders', 'w1'), { status: 'done', ...stampUpdate('staff') }));
+    await assertSucceeds(updateDoc(doc(db, 'workOrders', 'w1'), { status: 'done', resolution: 'Replaced valve', cost: 40, ...stampUpdate('staff') }));
+  });
+
+  it('keeps everyone else out and reserves cancelling for managers', async () => {
+    await seedWo({ assigneeId: 'staff' });
+    await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'users', 'staff2'), { role: 'staff', active: true, expiresAt: null }));
+    await assertFails(updateDoc(doc(as('staff2'), 'workOrders', 'w1'), { status: 'in_progress', ...stampUpdate('staff2') }));
+    await assertFails(updateDoc(doc(as('staff'), 'workOrders', 'w1'), { status: 'cancelled', resolution: 'x', ...stampUpdate('staff') }));
+    await assertSucceeds(updateDoc(doc(as('manager'), 'workOrders', 'w1'), { status: 'cancelled', resolution: 'Duplicate', ...stampUpdate('manager') }));
+    await assertFails(updateDoc(doc(as('manager'), 'workOrders', 'w1'), { number: 5, ...stampUpdate('manager') }));
+    await assertFails(updateDoc(doc(as('manager'), 'workOrders', 'w1'), { closedAt: serverTimestamp(), ...stampUpdate('manager') }));
+  });
+
+  it('allows comments as yourself only, and rules for admins only', async () => {
+    await seedWo();
+    const db = as('staff');
+    await assertSucceeds(setDoc(doc(db, 'workOrders', 'w1', 'log', 'c1'), { type: 'comment', text: 'Ordered part', by: 'staff', at: serverTimestamp() }));
+    await assertFails(setDoc(doc(db, 'workOrders', 'w1', 'log', 'c2'), { type: 'status', text: 'Done', by: 'staff', at: serverTimestamp() }));
+    await assertFails(setDoc(doc(db, 'workOrders', 'w1', 'log', 'c3'), { type: 'comment', text: 'x', by: 'manager', at: serverTimestamp() }));
+    const rule = { order: 1, name: 'r', assigneeId: null, dueInDays: 7, priority: 'high' };
+    await assertFails(setDoc(doc(as('manager'), 'workOrderRules', 'r1'), rule));
+    await assertSucceeds(setDoc(doc(as('admin'), 'workOrderRules', 'r1'), rule));
+    await assertFails(getDoc(doc(as('admin'), 'counters', 'workOrders')));
+  });
+
+  it('only lets admins set gear back to Active directly', async () => {
+    await env.withSecurityRulesDisabled((ctx) => updateDoc(doc(ctx.firestore(), 'gear', 'existing'), { status: 'quarantined' }));
+    const change = { status: 'active', statusReason: 'Fixed', statusChangedAt: serverTimestamp() };
+    await assertFails(updateDoc(doc(as('manager'), 'gear', 'existing'), { ...change, ...stampUpdate('manager') }));
+    await assertSucceeds(updateDoc(doc(as('manager'), 'gear', 'existing'), { ...change, status: 'retired', ...stampUpdate('manager') }));
+    await assertSucceeds(updateDoc(doc(as('admin'), 'gear', 'existing'), { ...change, ...stampUpdate('admin') }));
   });
 });

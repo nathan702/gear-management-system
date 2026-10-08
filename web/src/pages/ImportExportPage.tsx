@@ -1,7 +1,18 @@
 import { useMemo, useRef, useState } from 'react';
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import { db } from '../firebase';
-import { FORM_HEADERS, INSPECTION_LOG_HEADERS, formsToRows, inspectionLogRows, planFormImport, type FormImportPlan, type Inspection } from '@gear/shared';
+import {
+  FORM_HEADERS,
+  INSPECTION_LOG_HEADERS,
+  WORK_ORDER_LOG_HEADERS,
+  formsToRows,
+  inspectionLogRows,
+  planFormImport,
+  workOrderRows,
+  type FormImportPlan,
+  type Inspection,
+  type WorkOrder,
+} from '@gear/shared';
 import { saveInspectionForm } from '../data/writes';
 import type { Data } from '../data/DataProvider';
 import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Upload } from 'lucide-react';
@@ -314,10 +325,21 @@ async function inspectionLog(data: Data) {
   });
 }
 
+async function workOrderLog(data: Data) {
+  const snap = await getDocs(query(collection(db, 'workOrders'), orderBy('createdAt', 'desc')));
+  const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as WorkOrder) }));
+  return workOrderRows(list, {
+    gear: (id) => data.gear.get(id),
+    product: (id) => data.productLabel(id),
+    user: (id) => (id ? (data.users.get(id)?.displayName ?? '') : ''),
+  });
+}
+
 async function inspectionSheets(data: Data) {
   return [
     { name: 'Inspection forms', headers: [...FORM_HEADERS], rows: formsToRows([...data.inspectionForms.values()]) },
     { name: 'Inspection log', headers: [...INSPECTION_LOG_HEADERS], rows: await inspectionLog(data) },
+    { name: 'Work orders', headers: [...WORK_ORDER_LOG_HEADERS], rows: await workOrderLog(data) },
   ];
 }
 
@@ -331,7 +353,7 @@ function InspectionsCard() {
   const formRows = () => formsToRows(forms);
 
   return (
-    <Card title="Inspection forms & log">
+    <Card title="Inspections & work orders">
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-sm">
@@ -361,6 +383,24 @@ function InspectionsCard() {
               size="sm"
               onClick={async () =>
                 downloadXlsx([{ name: 'Inspection log', headers: [...INSPECTION_LOG_HEADERS], rows: await inspectionLog(data) }], `inspection-log-${stamp()}.xlsx`)
+              }
+            >
+              <Download size={14} /> Excel
+            </Button>
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm">
+            <b>Work orders</b> <span className="text-stone-500">· open and closed, newest first</span>
+          </span>
+          <span className="flex gap-2">
+            <Button size="sm" onClick={async () => downloadCsv([...WORK_ORDER_LOG_HEADERS], await workOrderLog(data), `work-orders-${stamp()}.csv`)}>
+              <Download size={14} /> CSV
+            </Button>
+            <Button
+              size="sm"
+              onClick={async () =>
+                downloadXlsx([{ name: 'Work orders', headers: [...WORK_ORDER_LOG_HEADERS], rows: await workOrderLog(data) }], `work-orders-${stamp()}.xlsx`)
               }
             >
               <Download size={14} /> Excel

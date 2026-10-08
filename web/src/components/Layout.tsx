@@ -4,6 +4,7 @@ import {
   Boxes,
   ClipboardCheck,
   CloudOff,
+  Wrench,
   Home,
   LogOut,
   Menu,
@@ -58,6 +59,7 @@ export function Layout() {
     { to: '/gear', label: 'Gear', icon: <Boxes size={18} /> },
     { to: '/scan', label: 'Scan', icon: <QrCode size={18} /> },
     { to: '/inspections', label: 'Inspections', icon: <ClipboardCheck size={18} /> },
+    { to: '/work-orders', label: 'Work orders', icon: <Wrench size={18} /> },
     { to: '/products', label: 'Products', icon: <Package size={18} /> },
   ];
   const manage: NavItem[] = [
@@ -154,7 +156,7 @@ export function Layout() {
 
       {/* Mobile bottom bar */}
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-stone-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
-        {[...main.slice(0, 2), main[2], main[3]].map((item) => (
+        {[main[0], main[1], main[2], profile.role === 'technician' ? main[4] : main[3]].map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
