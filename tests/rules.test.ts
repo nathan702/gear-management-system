@@ -369,6 +369,20 @@ describe('lists, kits, check-outs and usage', () => {
     await assertFails(setDoc(doc(as('staff'), 'usageLogs', 'u4'), log('staff', { processedAt: serverTimestamp() })));
     await assertFails(updateDoc(doc(as('admin'), 'usageLogs', 'u1'), { daysUsed: 5 }));
   });
+
+  it('lets an admin return someone else’s big kit in one batch', async () => {
+    // Regression: one exists() per usage log hit the 20-lookup limit for kits over ~18 items.
+    const ids = Array.from({ length: 40 }, (_, i) => `big${i}`);
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'kits', 'big'), kit('staff', { gearIds: ids, status: 'checked_out' }));
+    });
+    const db = as('admin');
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'kits', 'big'), { status: 'returned', returnedDate: '2026-10-16', ...stampUpdate('admin') });
+    for (const id of ids)
+      batch.set(doc(db, 'usageLogs', `log-${id}`), { gearId: id, userId: 'staff', startDate: '2026-10-10', endDate: '2026-10-16', daysUsed: 3, kitId: 'big', checkoutId: null, ...stampCreate('admin') });
+    await assertSucceeds(batch.commit());
+  });
 });
 
 describe('notifications', () => {

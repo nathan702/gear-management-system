@@ -118,9 +118,11 @@ function baseline(gear: GearForSchedule): IsoDate | null {
 }
 
 /**
- * In-service: due every N days while in use. After time idle it is due the
- * day use resumes (if the interval has passed); it's overdue once that day
- * has gone by without one. Not in use → never due.
+ * In-service: due N calendar days after the last check, but only enforced
+ * while the gear is in use. Not in use → never due or overdue. If the due
+ * date passed while it was stored, it's due on the first day of the current
+ * use (one catch-up check, however many intervals were missed) and overdue
+ * from the day after.
  */
 function inServiceStatus(gear: GearForSchedule, schedule: InspectionSchedule, today: IsoDate, inUse: InUse | null | undefined): ScheduleStatus {
   const lastDate = gear.inspectionState?.[schedule.formId]?.lastDate ?? null;

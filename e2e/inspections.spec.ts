@@ -115,12 +115,12 @@ test('in-service checks come due only while gear is in use, for whoever has it',
   // Idle gear: the weekly in-service check isn't due.
   await page.goto('/gear?q=kayak%205');
   await page.getByRole('link', { name: 'Kayak 5', exact: true }).click();
-  await expect(page.getByText(/every 7 days in use · not in use/)).toBeVisible();
+  await expect(page.getByText(/weekly · not in use/)).toBeVisible();
 
   // Taking it out makes it due today, for this person.
   await page.getByRole('button', { name: 'Check out', exact: true }).click();
   await page.getByRole('button', { name: /^Check out( anyway)?$/ }).last().click();
-  await expect(page.getByText(/every 7 days in use · due today/)).toBeVisible();
+  await expect(page.getByText(/weekly · due today/)).toBeVisible();
   await page.goto('/inspections?mine=1&kind=in_service');
   await expect(page.getByRole('link', { name: 'Kayak 5', exact: true })).toBeVisible();
   await shot(page, 'p2b-01-in-service-due');
@@ -134,5 +134,5 @@ test('in-service checks come due only while gear is in use, for whoever has it',
   await page.getByRole('button', { name: 'Submit inspection' }).click();
   await expect(page.getByText('No failures').or(page.getByText('Stayed'))).toBeVisible({ timeout: 15_000 });
   await page.getByRole('link', { name: 'Kayak 5' }).first().click();
-  await expect(page.getByText(/every 7 days in use · next /)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/weekly · next /)).toBeVisible({ timeout: 15_000 });
 });

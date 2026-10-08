@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import QrScanner from 'qr-scanner';
 import { serverTimestamp } from 'firebase/firestore';
-import { AlertTriangle, LogIn, LogOut, Pencil, Plus, QrCode, Search, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ClipboardCheck, LogIn, LogOut, Pencil, Plus, QrCode, Search, Trash2, X } from 'lucide-react';
 import {
   codeFromScan,
   fillFromList,
@@ -15,9 +15,10 @@ import {
 import { useMe } from '../auth/AuthProvider';
 import { byName, compareText, sortedValues, useData } from '../data/DataProvider';
 import { deleteDocument, returnKit, saveKit } from '../data/writes';
-import { Button, Card, Field, Input, Modal, PageHeader, Select, StatusBadge, Textarea } from '../components/ui';
+import { Button, Card, Field, buttonClass, Input, Modal, PageHeader, Select, StatusBadge, Textarea } from '../components/ui';
 import { DueBadge, useInspectionSummaries } from '../inspections/common';
 import { KitStatusBadge, availabilityText, canEditKit, inspectionsBeforeCheckout, isBlocked, useAvailability, type KitDoc } from '../kits/common';
+import { KitChecksCard, inspectLink } from '../kits/KitChecks';
 import { useLineLabel } from './ListsPage';
 import { kitDates } from './KitsPage';
 import { fmtDate, plural } from '../lib/format';
@@ -267,6 +268,10 @@ function KitView({ kit }: { kit: KitDoc }) {
       />
       {kit.notes && <p className="text-sm whitespace-pre-wrap text-stone-700">{kit.notes}</p>}
 
+      {/* On phones the checks come before the gear list; on wide screens they sit beside it. */}
+      <div className="lg:hidden">
+        <KitChecksCard kit={kit} items={items} />
+      </div>
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
         <Card title={`Gear (${items.length})`}>
           {items.length ? (
@@ -290,6 +295,11 @@ function KitView({ kit }: { kit: KitDoc }) {
                       <DueBadge state={summaries.get(g.id)?.state ?? 'none'} short />
                       <StatusBadge status={g.status} />
                     </span>
+                    {kit.status !== 'returned' && g.status !== 'retired' && (
+                      <Link className={buttonClass('ghost', 'sm')} to={inspectLink(g.id, kit.id)} aria-label={`Inspect ${g.name}`} title="Inspect">
+                        <ClipboardCheck size={16} />
+                      </Link>
+                    )}
                     {canEdit && kit.status === 'planned' && (
                       <Button size="sm" variant="ghost" aria-label={`Remove ${g.name}`} onClick={() => remove(g.id)}>
                         <X size={16} />
@@ -343,6 +353,9 @@ function KitView({ kit }: { kit: KitDoc }) {
         </Card>
 
         <div className="space-y-5">
+          <div className="hidden lg:block">
+            <KitChecksCard kit={kit} items={items} />
+          </div>
           {list && fill && (
             <Card
               title={
@@ -486,7 +499,7 @@ function CheckOutModal({ kit, items, isAdmin, onClose }: { kit: KitDoc; items: (
               {needs.length > 0 && (
                 <>
                   {' '}
-                  <Link className="link" to={`/gear/${g.id}/inspect?form=${needs[0]}`}>
+                  <Link className="link" to={inspectLink(g.id, kit.id, needs[0])}>
                     Inspect now
                   </Link>
                 </>

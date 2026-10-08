@@ -22,6 +22,7 @@ import {
   X,
   ChartColumn,
 } from 'lucide-react';
+import type { Role } from '@gear/shared';
 import { useAuth, useMe } from '../auth/AuthProvider';
 import { useData } from '../data/DataProvider';
 import { usePhotoQueueCount } from '../photos/photoQueue';
@@ -46,6 +47,17 @@ interface NavItem {
   label: string;
   icon: ReactNode;
   end?: boolean;
+}
+
+/**
+ * Four links around the center Scan button (the fifth slot is "More").
+ * Staff mostly work from their kits, technicians from work orders.
+ */
+function mobileBar(main: NavItem[], role: Role): NavItem[] {
+  const by = (to: string) => main.find((m) => m.to === to)!;
+  if (role === 'staff') return [by('/'), by('/kits'), by('/scan'), by('/inspections')];
+  if (role === 'technician') return [by('/'), by('/gear'), by('/scan'), by('/work-orders')];
+  return [by('/'), by('/gear'), by('/scan'), by('/inspections')];
 }
 
 export function Layout() {
@@ -164,7 +176,7 @@ export function Layout() {
 
       {/* Mobile bottom bar */}
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-stone-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
-        {[main[0], main[1], main[2], profile.role === 'technician' ? main[4] : main[3]].map((item) => (
+        {mobileBar(main, profile.role).map((item) => (
           <NavLink
             key={item.to}
             to={item.to}

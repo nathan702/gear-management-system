@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { addDays } from './gear';
 import {
   calculatedStatus,
   gearInspectionSummary,
@@ -177,6 +178,52 @@ describe('in-service schedules', () => {
     expect(scheduleStatus(gear('2026-10-05'), weekly, '2026-10-08', use)).toMatchObject({ state: 'ok', dueDate: '2026-10-12' });
     expect(scheduleStatus(gear('2026-10-05'), weekly, '2026-10-12', use).state).toBe('due_soon');
     expect(scheduleStatus(gear('2026-10-07'), { ...weekly, everyDaysInUse: 1 }, '2026-10-08', use)).toMatchObject({ state: 'due_soon', dueDate: '2026-10-08' });
+  });
+
+  /**
+   * Replays days 1..N. Each in-use day, whoever has the gear does the check if
+   * it shows as due (or overdue). Returns the days checks were done on and
+   * every day's state.
+   */
+  function simulate(periods: [number, number][], days: number) {
+    const day = (n: number) => addDays('2026-01-01', n - 1);
+    let last: string | undefined;
+    const checks: number[] = [];
+    const states: string[] = [];
+    for (let n = 1; n <= days; n++) {
+      const period = periods.find(([a, b]) => n >= a && n <= b);
+      const inUse = period ? { since: day(period[0]), holderIds: ['u'] } : null;
+      const st = scheduleStatus(gear(last), weekly, day(n), inUse);
+      states.push(st.state);
+      if (st.state !== 'ok') {
+        checks.push(n);
+        last = day(n);
+      }
+    }
+    return { checks, states };
+  }
+
+  it('needs four weekly checks over 28 days of continuous use', () => {
+    expect(simulate([[1, 28]], 28).checks).toEqual([1, 8, 15, 22]);
+  });
+
+  it('needs one catch-up check after storage, not one per missed week', () => {
+    // Used a week, stored three weeks, used two more weeks.
+    const { checks, states } = simulate([[1, 7], [29, 42]], 42);
+    expect(checks).toEqual([1, 29, 36]);
+    // Days 8–28 in storage: the day-8 check had passed, but nothing is due or overdue.
+    expect(states.slice(7, 28).every((s) => s === 'ok')).toBe(true);
+  });
+
+  it('needs nothing extra after a short break inside the interval', () => {
+    // Checked day 1, stored days 2–4, out again day 5: next check is still day 8.
+    expect(simulate([[1, 1], [5, 14]], 14).checks).toEqual([1, 8]);
+  });
+
+  it('is due today on the due day and overdue from the day after while in use', () => {
+    const use = { since: '2026-01-01', holderIds: ['u'] };
+    expect(scheduleStatus(gear('2026-01-01'), weekly, '2026-01-08', use).state).toBe('due_soon');
+    expect(scheduleStatus(gear('2026-01-01'), weekly, '2026-01-09', use).state).toBe('overdue');
   });
 
   it('keeps in-service and in-depth states apart', () => {

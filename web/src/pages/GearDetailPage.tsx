@@ -141,7 +141,6 @@ export function GearDetailPage() {
                 ['Tags', g.tags?.length ? g.tags.join(', ') : null],
                 ['Supplier', g.supplier || null],
                 ['Purchased', g.purchaseDate ? `${fmtDate(g.purchaseDate)}${g.purchaseValue != null ? ` · ${fmtMoney(g.purchaseValue)}` : ''}` : g.purchaseValue != null ? fmtMoney(g.purchaseValue) : null],
-                ['Standards', product?.standards || null],
               ]}
             />
           </Card>

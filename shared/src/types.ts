@@ -95,9 +95,10 @@ export interface Manufacturer extends Stamped {
 
 export const INSPECTION_KINDS = ['in_service', 'in_depth'] as const;
 /**
- * in_service: quick checks by whoever is using the gear, every N days while
- * it's in use (checked out or in a current kit). Idle gear never comes due;
- * it's due as soon as it's used again once the interval has passed.
+ * in_service: quick checks by whoever is using the gear, every N calendar
+ * days — but only enforced while it's in use (checked out or in a current
+ * kit). Stored gear is never due or overdue; if the interval ran out while it
+ * was stored, one catch-up check is due on its first day back out.
  * in_depth: routine inspections by maintenance staff on a calendar and/or
  * days-used basis, assigned under "Who inspects what".
  */
@@ -108,7 +109,7 @@ export interface InspectionSchedule {
   formId: string;
   /** Missing on older schedules, which are in-depth. */
   kind?: InspectionKind;
-  /** in_service: every N days the gear is in use (1 = daily, 7 = weekly). */
+  /** in_service: every N calendar days, enforced only while in use (1 = daily, 7 = weekly). */
   everyDaysInUse?: number | null;
   /** in_depth: every N months and/or every N days used, whichever comes first. */
   everyMonths?: number | null;
@@ -128,7 +129,6 @@ export interface Product extends Stamped {
   categoryId: string | null;
   lifetimeYears?: number | null;
   replacementCost?: number | null;
-  standards?: string;
   isPpe?: boolean;
   notes?: string;
   links?: Link[];

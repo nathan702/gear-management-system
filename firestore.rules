@@ -362,12 +362,15 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Days used are permanent once logged; a function adds them to gear.stats.
+    // Days used are permanent once logged; a function adds them to gear.stats
+    // (and skips logs for gear that doesn't exist). No exists() check here:
+    // returning a kit logs every item in one batch, and rules allow only 20
+    // document lookups per batch, so big kits couldn't be returned.
     match /usageLogs/{id} {
       allow read: if isActive();
       allow create: if isActive() && stampedCreate()
         && (request.resource.data.userId == request.auth.uid || isManager())
-        && exists(gearPath(request.resource.data.gearId))
+        && request.resource.data.gearId is string && request.resource.data.gearId.size() > 0
         && request.resource.data.daysUsed is number
         && request.resource.data.daysUsed >= 0 && request.resource.data.daysUsed <= 366
         && optNumber(request.resource.data, 'uses')

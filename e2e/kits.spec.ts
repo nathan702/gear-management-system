@@ -115,3 +115,42 @@ test('managers create lists', async ({ page }) => {
   await page.getByRole('button', { name: 'Save list' }).click();
   await expect(page.getByText('Any Harnesses')).toBeVisible();
 });
+
+test('staff run their in-service checks from the kit page', async ({ page }) => {
+  await signIn(page, 'staff');
+  await page.goto('/lists');
+  await page.getByRole('link', { name: /Day raft trip/ }).click();
+  await page.getByRole('link', { name: 'Build a kit from this list' }).click();
+  await page.getByLabel('Name').fill('Checks trip');
+  await page.getByRole('button', { name: 'Create kit and add gear' }).click();
+  await page.getByRole('button', { name: /^Add \d+ suggestions?$/ }).click();
+
+  // Gear that has never had its pre-use check needs one before it goes out.
+  const heading = page.getByRole('heading', { name: /^Checks to do \(\d+\)$/ });
+  await expect(heading).toBeVisible();
+  const before = Number((await heading.textContent())!.match(/\d+/)![0]);
+  await shot(page, 'p7-01-kit-checks');
+
+  await page.getByRole('link', { name: before > 1 ? 'Start checks' : 'Inspect', exact: true }).click();
+  await expect(page.getByRole('link', { name: '← Checks trip' })).toBeVisible();
+  await page.getByRole('button', { name: 'Pass all unanswered checks' }).click();
+  await page.getByRole('button', { name: 'Submit inspection' }).click();
+
+  // Back on the kit, with one fewer to do.
+  await expect(page.getByRole('heading', { name: /Checks trip/ })).toBeVisible();
+  await expect(page.getByText(/no failures/)).toBeVisible();
+  if (before > 1) await expect(page.getByRole('heading', { name: `Checks to do (${before - 1})` })).toBeVisible();
+  else await expect(page.getByText('Nothing needs checking before this kit goes out.')).toBeVisible();
+});
+
+test.describe('on a phone', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+  test('staff get Kits in the bottom bar, around Scan', async ({ page }) => {
+    await signIn(page, 'staff');
+    const bar = page.locator('nav.fixed');
+    await expect(bar.getByRole('link')).toHaveText(['Home', 'Kits', 'Scan', 'Inspections']);
+    await bar.getByRole('link', { name: 'Kits' }).click();
+    await expect(page).toHaveURL(/\/kits$/);
+    await shot(page, 'p7-02-mobile-bar');
+  });
+});

@@ -7,6 +7,7 @@ import { deleteDocument } from '../data/writes';
 import { Badge, Button, Card, Dl, Empty, LinkButton, PageHeader, StatusBadge } from '../components/ui';
 import { fmtMoney } from '../lib/format';
 import { notify } from '../components/toast';
+import { intervalText } from '../inspections/common';
 
 export function ProductDetailPage() {
   const { id = '' } = useParams();
@@ -58,7 +59,6 @@ export function ProductDetailPage() {
                 ['Variant', p.variant || null],
                 ['Lifetime', p.lifetimeYears ? `${p.lifetimeYears} years` : null],
                 ['Replacement cost', p.replacementCost != null ? fmtMoney(p.replacementCost) : null],
-                ['Standards', p.standards || null],
               ]}
             />
             {p.notes && <p className="mt-4 text-sm whitespace-pre-wrap">{p.notes}</p>}
@@ -85,7 +85,7 @@ export function ProductDetailPage() {
                     <span className="text-stone-600">
                       {' — '}
                       {[
-                        s.kind === 'in_service' ? `in-service, every ${s.everyDaysInUse && s.everyDaysInUse > 1 ? `${s.everyDaysInUse} days` : 'day'} in use` : null,
+                        s.kind === 'in_service' ? `in-service, ${intervalText(s.everyDaysInUse)} while in use` : null,
                         s.kind !== 'in_service' && s.everyMonths ? `every ${s.everyMonths} month${s.everyMonths === 1 ? '' : 's'}` : null,
                         s.everyDaysUsed ? `every ${s.everyDaysUsed} days used` : null,
                         s.beforeEachCheckout ? 'before each check-out' : null,
