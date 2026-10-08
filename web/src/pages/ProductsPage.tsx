@@ -25,7 +25,7 @@ export function ProductsPage() {
       (p) =>
         (showInactive || p.active) &&
         (!category || p.categoryId === category) &&
-        (!needle || `${productLabel(p.id)} ${p.standards ?? ''}`.toLowerCase().includes(needle)),
+        (!needle || productLabel(p.id).toLowerCase().includes(needle)),
     );
     const byCat = new Map<string, typeof list>();
     for (const p of list) {
@@ -87,7 +87,7 @@ export function ProductsPage() {
                       <span className="min-w-0">
                         <span className="block truncate font-medium">{productLabel(p.id)}</span>
                         <span className="block text-xs text-stone-500">
-                          {[p.lifetimeYears ? `${p.lifetimeYears}-yr life` : null, p.replacementCost != null ? `${fmtMoney(p.replacementCost)} to replace` : null, p.standards]
+                          {[p.lifetimeYears ? `${p.lifetimeYears}-yr life` : null, p.replacementCost != null ? `${fmtMoney(p.replacementCost)} to replace` : null]
                             .filter(Boolean)
                             .join(' · ') || ' '}
                         </span>

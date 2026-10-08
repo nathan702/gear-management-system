@@ -22,7 +22,7 @@ import { compareText, useData } from '../data/DataProvider';
 import { submitInspection } from '../data/writes';
 import { Button, Card, Checkbox, Field, Input, PageHeader, Select, StatusBadge, Textarea } from '../components/ui';
 import { AddPhotoButton, PhotoGallery, usePhotos } from '../photos/PhotoGallery';
-import { DueBadge, KindTag, dueText, useInspectionSummaries } from '../inspections/common';
+import { DueBadge, KindTag, dueText, markInspected, useInspectionSummaries } from '../inspections/common';
 import { notify } from '../components/toast';
 
 interface Answer {
@@ -34,22 +34,26 @@ interface Answer {
 export function InspectPage() {
   const { id = '' } = useParams();
   const [params, setParams] = useSearchParams();
-  const { gear, products, inspectionForms, productLabel } = useData();
+  const { gear, products, inspectionForms, productLabel, kits } = useData();
   const g = gear.get(id);
   const formId = params.get('form');
+  // Started from a kit: come back to it afterwards.
+  const kit = params.get('kit') ? kits.get(params.get('kit')!) : undefined;
+  const back = kit ? { to: `/kits/${kit.id}`, label: kit.name } : g ? { to: `/gear/${g.id}`, label: g.name } : { to: '/gear', label: 'Gear' };
+  const pick = (f: string) => setParams(kit ? { form: f, kit: kit.id } : { form: f });
   const summaries = useInspectionSummaries();
 
   if (!g) return <PageHeader title="Gear not found" back={{ to: '/gear', label: 'Gear' }} />;
   if (g.status === 'retired')
     return (
       <div>
-        <PageHeader title={`Inspect ${g.name}`} back={{ to: `/gear/${g.id}`, label: g.name }} />
+        <PageHeader title={`Inspect ${g.name}`} back={back} />
         <p className="text-stone-600">Retired gear isn’t inspected.</p>
       </div>
     );
 
   const form = formId ? inspectionForms.get(formId) : undefined;
-  if (form) return <InspectionRun key={form.id} gearId={g.id} formId={form.id} />;
+  if (form) return <InspectionRun key={form.id} gearId={g.id} formId={form.id} kitId={kit?.id} />;
 
   const product = g.productId ? products.get(g.productId) : undefined;
   const scheduled = summaries.get(g.id)?.schedules ?? [];
@@ -58,7 +62,7 @@ export function InspectPage() {
 
   return (
     <div className="mx-auto max-w-xl space-y-5">
-      <PageHeader title={`Inspect ${g.name}`} subtitle={productLabel(g.productId) || undefined} back={{ to: `/gear/${g.id}`, label: g.name }} />
+      <PageHeader title={`Inspect ${g.name}`} subtitle={productLabel(g.productId) || undefined} back={back} />
       {scheduled.length > 0 && (
         <Card title={`Scheduled for ${product ? productLabel(product.id) : 'this product'}`}>
           <ul className="divide-y divide-stone-100">
@@ -67,7 +71,7 @@ export function InspectPage() {
               if (!f) return null;
               return (
                 <li key={f.id}>
-                  <button className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-stone-50" onClick={() => setParams({ form: f.id })}>
+                  <button className="flex w-full items-center justify-between gap-3 py-3 text-left hover:bg-stone-50" onClick={() => pick(f.id)}>
                     <span>
                       <span className="flex items-center gap-2 font-medium">
                         <KindTag kind={s.kind} /> {f.name}
@@ -87,7 +91,7 @@ export function InspectPage() {
           <ul className="divide-y divide-stone-100">
             {others.map((f) => (
               <li key={f.id}>
-                <button className="w-full py-3 text-left font-medium hover:bg-stone-50" onClick={() => setParams({ form: f.id })}>
+                <button className="w-full py-3 text-left font-medium hover:bg-stone-50" onClick={() => pick(f.id)}>
                   {f.name}
                 </button>
               </li>
@@ -120,10 +124,11 @@ function resultOf(item: InspectionItem, a: Answer | undefined): ResponseResult |
   return a.result;
 }
 
-function InspectionRun({ gearId, formId }: { gearId: string; formId: string }) {
+function InspectionRun({ gearId, formId, kitId }: { gearId: string; formId: string; kitId?: string }) {
   const navigate = useNavigate();
   const { uid } = useMe();
-  const { gear, inspectionForms, productLabel } = useData();
+  const { gear, inspectionForms, productLabel, kits } = useData();
+  const kit = kitId ? kits.get(kitId) : undefined;
   const g = gear.get(gearId)!;
   const form = inspectionForms.get(formId)!;
   // Id chosen up front so photos taken during the inspection can link to it.
@@ -195,8 +200,20 @@ function InspectionRun({ gearId, formId }: { gearId: string; formId: string }) {
         calculatedStatus: calculated,
         override: overriding ? { status: overrideStatus, reason: overrideReason.trim() } : null,
       });
-      notify('Inspection saved', 'success');
-      navigate(`/inspections/${inspectionId}`, { replace: true });
+      markInspected(g.id, form.id, date);
+      if (kit) {
+        // Back to the kit to carry on with the next check.
+        notify(
+          failed.length
+            ? `${g.name}: ${failed.length} failed — a work order will be opened${finalStatus !== g.status ? ` and it will be ${STATUS_LABELS[finalStatus].toLowerCase()}` : ''}.`
+            : `${g.name}: no failures`,
+          failed.length ? 'error' : 'success',
+        );
+        navigate(`/kits/${kit.id}`, { replace: true });
+      } else {
+        notify('Inspection saved', 'success');
+        navigate(`/inspections/${inspectionId}`, { replace: true });
+      }
     } finally {
       setBusy(false);
     }
@@ -214,7 +231,7 @@ function InspectionRun({ gearId, formId }: { gearId: string; formId: string }) {
             {g.name} · {productLabel(g.productId) || 'No product'} · currently <StatusBadge status={g.status} />
           </>
         }
-        back={{ to: `/gear/${g.id}/inspect`, label: 'Choose another form' }}
+        back={kit ? { to: `/kits/${kit.id}`, label: kit.name } : { to: `/gear/${g.id}/inspect`, label: 'Choose another form' }}
       />
       {form.description && <p className="text-sm text-stone-600">{form.description}</p>}
 

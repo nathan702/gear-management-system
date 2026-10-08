@@ -41,7 +41,7 @@ e2e/         Playwright browser tests (run against the emulators)
 | `users/{uid}` | name, email, role (`admin`/`manager`/`staff`/`technician`), active, `expiresAt`, phone, home program area. Created only by the `activateAccount` function. |
 | `invites/{email}` | Pending invitations for non-calleva.org emails (role, optional access end date). |
 | `programAreas`, `locations`, `categories`, `manufacturers` | Name, description, active. Locations can sit inside another location. |
-| `products` | Manufacturer + model + variant (Model is merged into Product), category, lifetime (years), replacement cost, standards, PPE flag, document links; inspection schedules arrive in phase 2. |
+| `products` | Manufacturer + model + variant (Model is merged into Product), category, lifetime (years), replacement cost, PPE flag, document links, inspection schedules. |
 | `gear` | name, product, program area, location, status, QR code, serial, tags, mfg/purchase/first-use dates, purchase value, supplier, custom end of life, notes, links, retired date/reason. Server-maintained: `inspectionState` (latest inspection per form) and `stats` (days used). |
 | `gear/{id}/statusHistory` | Every status change with reason, source and who — written by a Cloud Function. |
 | `qrCodes/{code}` | Reverse index `{ gearId }` that keeps codes unique; lookups work offline. |
@@ -68,7 +68,12 @@ Any status change requires a reason, which is recorded in the history.
 ### Inspections
 
 - Products list the forms their gear needs and how often. There are two kinds of schedule:
-  - **In-service checks** (e.g. a daily or weekly pre-use check) are done by **whoever is using the gear** — anyone with it checked out or in a kit that's current today. The interval only counts days the gear is in use: gear that sits on the shelf for a month needs no check, and is due on the first day it goes back out; gear in use every day is due every N days. In-service checks never block adding gear to a kit.
+  - **In-service checks** (e.g. a daily or weekly pre-use check) are done by **whoever is using the gear** — anyone with it checked out or in a kit that's current today. They're due every N calendar days after the last check, but only enforced while the gear is in use: stored gear is never due or overdue. If the due date passed while it was stored, one catch-up check is due on its first day back out (not one per missed interval), and the clock restarts from that check. A check is *due today* on its due day and *overdue* from the day after. With a weekly check:
+    - used 28 days straight → checks on days 1, 8, 15 and 22;
+    - used a week, stored three weeks, used two weeks → checks on days 1, 29 (catch-up) and 36;
+    - checked day 1, stored days 2–4, out again day 5 → nothing until day 8.
+
+    In-service checks never block adding gear to a kit.
   - **In-depth inspections** (e.g. annual) are done by the **inspectors assigned** under *Who inspects what* (typically the same people who handle work orders): every N months and/or every N days used — whichever comes first — plus how many days ahead it shows as *due soon* (default 14). Never-inspected gear counts from its first-use date (else purchase date, else when it was added). An overdue in-depth inspection blocks the gear from kits.
 - Anyone can inspect, including offline. Submitting writes the inspection; the `applyInspection` Cloud Function then works out the result — the **worst failure outcome** among failed items (*Note only* failures count as Active), or the inspector's **override** (which needs a reason) — and applies it only if it is **worse** than the gear's current status. Inspections never clear a problem: only closing a work order returns gear to Active (phase 3). Retired gear isn't changed. A late-syncing older inspection still applies any problem it found but doesn't replace the newer inspection as the latest.
 - *Inspections → Due* lists overdue and due-soon gear, filterable by type and to *Assigned to me* (in-service checks on gear you have out, in-depth inspections assigned to you).
@@ -89,6 +94,7 @@ Gear status only gets worse through inspections and issue reports, and only gets
 - **Lists** (managers) say what an activity needs: specific products or “any” of a category, with quantities.
 - **Kits** are the actual gear someone takes. Anyone can build their own (optionally from a list, which then shows what's still missing and suggests available gear); admins can build them for others; everyone can see every kit. Gear can be in several kits only if their dates don't overlap — a kit without dates holds its gear until it's returned.
 - Adding gear checks it: **retired gear and double-booking are never allowed**; **quarantined gear or gear with an overdue inspection** is blocked for everyone except admins, who get a warning and can add it anyway. Gear with issues or an inspection due soon shows a warning.
+- **Checks from the kit** — a kit's page lists the inspections its gear needs: once it's out, the in-service checks due now; before then, the ones that will be due on the day it goes out (and any product that needs a check before each check-out). *Start checks* walks through them, coming back to the kit after each one; every item also has an Inspect button. In-depth inspections that are overdue are listed for maintenance.
 - **Check out / return** — checking a kit out flags anything not ready (and any product set to need an inspection *before each check-out* that hasn't had one today). Returning asks how many days each item was actually used.
 - Single items can be **checked out** from their gear page too, and use outside kits can be **logged** directly. Days used feed the *every N days used* inspection schedules.
 
@@ -131,7 +137,7 @@ Admins set it up under **Manage → Notifications**: the reminder hour (Eastern)
 | Add/edit gear & products, change status, reference data, inspection forms & assignments, import/export | ✓ | ✓ | | |
 | Users, invitations, settings, notifications setup, work order assignment rules, delete records, set gear back to Active directly | ✓ | | | |
 
-Admins can delete inspection and work order records (the gear's status isn't rolled back). Technicians land on *Work orders → Assigned to me*, and their phone menu shows Work orders instead of Inspections.
+Admins can delete inspection and work order records (the gear's status isn't rolled back). Technicians land on *Work orders → Assigned to me*. On phones the bottom bar has Scan in the middle and is tailored by role: staff get Home · Kits · Scan · Inspections (Gear is under *More*), technicians Home · Gear · Scan · Work orders, managers and admins Home · Gear · Scan · Inspections.
 
 ## Local development
 

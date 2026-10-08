@@ -95,7 +95,6 @@ export const ENTITIES: Record<EntityKey, EntityDef> = {
       { key: 'categoryId', header: 'category', type: 'ref', ref: 'categories' },
       { key: 'lifetimeYears', header: 'lifetime_years', type: 'number' },
       { key: 'replacementCost', header: 'replacement_cost', type: 'number' },
-      { key: 'standards', header: 'standards', type: 'string', help: 'e.g. EN 12492, USCG Type III' },
       { key: 'isPpe', header: 'is_ppe', type: 'boolean' },
       { key: 'notes', header: 'notes', type: 'text' },
       { key: 'links', header: 'links', type: 'links', help: 'label | url; label | url' },

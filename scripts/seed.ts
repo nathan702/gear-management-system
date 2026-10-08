@@ -134,9 +134,9 @@ async function seedDemo(
 
   const products = [
     { key: 'raft', manufacturerId: maker('NRS'), model: 'Otter 130', variant: 'Blue', categoryId: category('Rafts'), lifetimeYears: 10, replacementCost: 5800 },
-    { key: 'pfd', manufacturerId: maker('Astral'), model: 'V-Eight', variant: 'M/L', categoryId: category('PFDs'), lifetimeYears: 8, replacementCost: 140, standards: 'USCG Type III', isPpe: true },
-    { key: 'helmet', manufacturerId: maker('Petzl'), model: 'Boreo', variant: 'Size 2', categoryId: category('Helmets'), lifetimeYears: 10, replacementCost: 70, standards: 'EN 12492', isPpe: true },
-    { key: 'harness', manufacturerId: maker('Black Diamond'), model: 'Momentum', variant: 'M', categoryId: category('Harnesses'), lifetimeYears: 10, replacementCost: 65, standards: 'EN 12277', isPpe: true },
+    { key: 'pfd', manufacturerId: maker('Astral'), model: 'V-Eight', variant: 'M/L', categoryId: category('PFDs'), lifetimeYears: 8, replacementCost: 140, isPpe: true },
+    { key: 'helmet', manufacturerId: maker('Petzl'), model: 'Boreo', variant: 'Size 2', categoryId: category('Helmets'), lifetimeYears: 10, replacementCost: 70, isPpe: true },
+    { key: 'harness', manufacturerId: maker('Black Diamond'), model: 'Momentum', variant: 'M', categoryId: category('Harnesses'), lifetimeYears: 10, replacementCost: 65, isPpe: true },
     { key: 'kayak', manufacturerId: maker('Jackson Kayak'), model: 'Zen 3.0', variant: 'Medium', categoryId: category('Kayaks'), lifetimeYears: 12, replacementCost: 1450 },
     { key: 'bike', manufacturerId: maker('Trek'), model: 'Marlin 5', variant: 'M', categoryId: category('Bikes'), lifetimeYears: 8, replacementCost: 700 },
   ];

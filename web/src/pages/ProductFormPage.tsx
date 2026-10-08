@@ -28,7 +28,6 @@ export function ProductFormPage() {
     categoryId: existing?.categoryId ?? '',
     lifetimeYears: existing?.lifetimeYears != null ? String(existing.lifetimeYears) : '',
     replacementCost: existing?.replacementCost != null ? String(existing.replacementCost) : '',
-    standards: existing?.standards ?? '',
     isPpe: existing?.isPpe ?? false,
     notes: existing?.notes ?? '',
     links: formatLinks(existing?.links).replaceAll('; ', '\n'),
@@ -64,7 +63,6 @@ export function ProductFormPage() {
         categoryId: form.categoryId || null,
         lifetimeYears: numOrNull(form.lifetimeYears),
         replacementCost: numOrNull(form.replacementCost),
-        standards: form.standards.trim(),
         isPpe: form.isPpe,
         notes: form.notes.trim(),
         links,
@@ -124,9 +122,6 @@ export function ProductFormPage() {
             ))}
           </Select>
         </Field>
-        <Field label="Standards / certification" hint="e.g. EN 12492, USCG Type III">
-          <Input value={form.standards} onChange={set('standards')} />
-        </Field>
         <Field label="Manufacturer’s lifetime (years)" hint="Used to work out end of life.">
           <Input inputMode="decimal" value={form.lifetimeYears} onChange={set('lifetimeYears')} />
         </Field>
@@ -140,8 +135,8 @@ export function ProductFormPage() {
         <div className="sm:col-span-2">
           <p className="label">Inspection schedule</p>
           <p className="mb-2 text-xs text-stone-500">
-            <b>In-service</b> checks are done by whoever is using the gear, every N days while it's in use (checked out or in a current kit) — idle gear
-            never comes due. <b>In-depth</b> inspections are routine checks by maintenance staff, due after N months or N days used, whichever comes
+            <b>In-service</b> checks are done by whoever is using the gear, every N calendar days — but only enforced while it’s checked out or in a
+            current kit. Stored gear is never overdue; it needs one catch-up check on its first day back out. <b>In-depth</b> inspections are routine checks by maintenance staff, due after N months or N days used, whichever comes
             first.{' '}
             <Link className="link" to="/inspections/forms" target="_blank">
               Manage forms
@@ -173,7 +168,7 @@ export function ProductFormPage() {
                   </Field>
                   {inService ? (
                     <>
-                      <Field label="Every (days in use)" className="sm:col-span-3">
+                      <Field label="Every (days)" hint="Calendar days; only enforced while the gear is in use" className="sm:col-span-3">
                         <Input inputMode="numeric" className="sm:max-w-24" value={sc.everyDaysInUse} onChange={(e) => set({ everyDaysInUse: e.target.value })} placeholder="7" />
                       </Field>
                     </>
