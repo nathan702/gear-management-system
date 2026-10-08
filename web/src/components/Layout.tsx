@@ -20,6 +20,7 @@ import {
   User,
   Users,
   X,
+  ChartColumn,
 } from 'lucide-react';
 import { useAuth, useMe } from '../auth/AuthProvider';
 import { useData } from '../data/DataProvider';
@@ -70,6 +71,7 @@ export function Layout() {
   const manage: NavItem[] = [
     ...(isManager
       ? [
+          { to: '/reports', label: 'Reports', icon: <ChartColumn size={18} /> },
           { to: '/admin/reference', label: 'Lists & categories', icon: <Tags size={18} /> },
           { to: '/admin/import-export', label: 'Import / export', icon: <Upload size={18} /> },
         ]
